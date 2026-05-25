@@ -1,0 +1,105 @@
+{
+  "calendar_provider": {
+    "class": "LocalCalendarProvider",
+    "module_path": "qlib.data.data",
+    "kwargs": {
+      "remote_url": null
+    }
+  },
+  "instrument_provider": {
+    "class": "LocalInstrumentProvider",
+    "module_path": "qlib.data.data",
+    "kwargs": {
+      "remote_url": null
+    }
+  },
+  "feature_provider": {
+    "class": "LocalFeatureProvider",
+    "module_path": "qlib.data.data",
+    "kwargs": {
+      "remote_url": null
+    }
+  },
+  "dataset_provider": {
+    "class": "LocalDatasetProvider",
+    "module_path": "qlib.data.data",
+    "kwargs": {
+      "remote_url": null
+    }
+  },
+  "freq_1h": {
+    "calendar": [
+      "1h.txt"
+    ],
+    "instrument": [
+      "all.txt"
+    ],
+    "feature": [
+      "close.1h.bin",
+      "open.1h.bin",
+      "high.1h.bin",
+      "low.1h.bin",
+      "volume.1h.bin"
+    ]
+  },
+  "freq_4h": {
+    "calendar": [
+      "4h.txt"
+    ],
+    "instrument": [
+      "all.txt"
+    ],
+    "feature": [
+      "close.4h.bin",
+      "open.4h.bin",
+      "high.4h.bin",
+      "low.4h.bin",
+      "volume.4h.bin"
+    ]
+  },
+  "freq_5min": {
+    "calendar": [
+      "5min.txt"
+    ],
+    "instrument": [
+      "all.txt"
+    ],
+    "feature": [
+      "close.5min.bin",
+      "open.5min.bin",
+      "high.5min.bin",
+      "low.5min.bin",
+      "volume.5min.bin"
+    ]
+  },
+  "freq_15min": {
+    "calendar": [
+      "15min.txt"
+    ],
+    "instrument": [
+      "all.txt"
+    ],
+    "feature": [
+      "close.15min.bin",
+      "open.15min.bin",
+      "high.15min.bin",
+      "low.15min.bin",
+      "volume.15min.bin"
+    ]
+  },
+  "freq_30min": {
+    "calendar": [
+      "30min.txt"
+    ],
+    "instrument": [
+      "all.txt"
+    ],
+    "feature": [
+      "close.30min.bin",
+      "open.30min.bin",
+      "high.30min.bin",
+      "low.30min.bin",
+      "volume.30min.bin"
+    ]
+  }
+}
