@@ -1,0 +1,15 @@
+BACKTEST_CONFIG = {
+    "freq": "60min",
+    "limit_threshold": None,
+    "deal_price": "close",
+    "open_cost": 0.0004,
+    "close_cost": 0.0004,
+    "min_cost": 0,
+    "slippage": 0.0001,
+    "pos_type": "InfPosition",
+    "account": 100000,
+    "benchmark": "btcusdt",
+    "long_threshold": 0.001,
+    "short_threshold": -0.001,
+    "position_ratio": 0.95,
+}
