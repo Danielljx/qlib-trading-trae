@@ -4,7 +4,7 @@ TRAINING_CONFIG = {
     "valid_start": "2020-10-01",
     "valid_end": "2020-12-31",
     "test_start": "2021-01-01",
-    "test_end": "2026-05-25",
+    "test_end": "2026-05-23",
     "rolling_step_months": 3,
     "rolling_type": "expanding",
     "valid_window_months": 3,

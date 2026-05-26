@@ -6,7 +6,7 @@ BACKTEST_CONFIG = {
     "close_cost": 0.0004,
     "min_cost": 0,
     "slippage": 0.0001,
-    "pos_type": "InfPosition",
+    "pos_type": "Position",
     "account": 100000,
     "benchmark": "btcusdt",
     "long_threshold": 0.001,

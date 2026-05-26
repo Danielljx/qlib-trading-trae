@@ -24,7 +24,12 @@ class ThresholdSignalStrategy(BaseSignalStrategy):
     def generate_trade_decision(self, execute_result=None):
         trade_step = self.trade_calendar.get_trade_step()
         trade_start_time, trade_end_time = self.trade_calendar.get_step_time(trade_step)
-        pred_start_time, pred_end_time = self.trade_calendar.get_step_time(trade_step, shift=1)
+
+        pred_start_time, pred_end_time = trade_start_time, trade_end_time
+        try:
+            pred_start_time, pred_end_time = self.trade_calendar.get_step_time(trade_step, shift=1)
+        except IndexError:
+            pass
 
         pred_score = self.signal.get_signal(start_time=pred_start_time, end_time=pred_end_time)
 

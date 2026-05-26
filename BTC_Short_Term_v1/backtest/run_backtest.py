@@ -7,9 +7,52 @@ from qlib.utils import init_instance_by_config
 from qlib.backtest.account import Account
 from qlib.backtest.exchange import Exchange
 from qlib.backtest import backtest_loop
+from qlib.backtest.decision import BaseTradeDecision
+from qlib.backtest.utils import TradeCalendarManager
+
+
+_orig_init = BaseTradeDecision.__init__
+_orig_get_step_time = TradeCalendarManager.get_step_time
+
+
+def _patched_init(self, strategy, trade_range=None):
+    self.strategy = strategy
+    try:
+        self.start_time, self.end_time = strategy.trade_calendar.get_step_time()
+    except IndexError:
+        cal = strategy.trade_calendar
+        idx = cal.start_index + cal.get_trade_step()
+        self.start_time = cal._calendar[idx]
+        self.end_time = self.start_time + pd.Timedelta(hours=1)
+    self.total_step = None
+    from qlib.backtest.decision import TradeRange
+    if isinstance(trade_range, tuple):
+        from qlib.backtest.decision import IdxTradeRange
+        trade_range = IdxTradeRange(*trade_range)
+    self.trade_range = trade_range
+
+
+def _patched_get_step_time(self, trade_step=None, shift=0):
+    if trade_step is None:
+        trade_step = self.get_trade_step()
+    calendar_index = self.start_index + trade_step - shift
+    if calendar_index + 1 >= len(self._calendar):
+        return self._calendar[calendar_index], self._calendar[calendar_index] + pd.Timedelta(hours=1)
+    return self._calendar[calendar_index], self._calendar[calendar_index + 1]
 
 
 def run_backtest(predictions, backtest_config, start_time, end_time):
+    BaseTradeDecision.__init__ = _patched_init
+    TradeCalendarManager.get_step_time = _patched_get_step_time
+
+    try:
+        return _run_backtest_impl(predictions, backtest_config, start_time, end_time)
+    finally:
+        BaseTradeDecision.__init__ = _orig_init
+        TradeCalendarManager.get_step_time = _orig_get_step_time
+
+
+def _run_backtest_impl(predictions, backtest_config, start_time, end_time):
     predictions = predictions.sort_index()
     signal_df = predictions.to_frame(name="score")
 

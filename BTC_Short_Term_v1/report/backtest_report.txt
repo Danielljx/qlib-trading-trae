@@ -1,0 +1,42 @@
+============================================================
+         BTCUSDT Short-Term Strategy v1 - Backtest Report
+============================================================
+
+Strategy Overview
+  Name:       BTC Short-Term v1
+  Instrument: BTCUSDT
+  Frequency:  1 Hour (60min)
+  Model:      LightGBM (Huber Loss, alpha=0.9)
+  Features:   35
+  Label:      Future 1H Return (Ref($close,-2)/Ref($close,-1)-1)
+  Strategy:   ThresholdSignalStrategy (long=0.1%, short=-0.1%)
+
+Training Configuration
+  Method:     Expanding Window Rolling
+  Initial:    2017-01-01 ~ 2020-12-31
+  Rolling:    Quarterly (3-month step)
+
+Backtest Performance
+  Period:           2021-01-01 ~ 2026-05-23
+
+  Initial Capital:        100,000.00 USDT
+  Final Value:              2,512.30 USDT
+  Total Return:              -97.49%
+  Benchmark (B&H):           578.29%
+  Annual Return:             -49.51%
+  Annual Volatility:          39.44%
+  Sharpe Ratio:             -1.5336
+  Max Drawdown:              -98.38%
+  Calmar Ratio:             -0.5033
+  Win Rate:                   20.64%
+  Profit/Loss Ratio:         0.9683
+  Total Trades:                7860
+  Avg Turnover:               30.80%
+
+Trading Costs (Binance USDT Perpetual)
+  Open Fee:       0.04% (Taker)
+  Close Fee:      0.04% (Taker)
+  Slippage:       0.01%
+  Total/round:    0.10%
+
+============================================================
