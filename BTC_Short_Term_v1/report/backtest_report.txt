@@ -11,9 +11,9 @@ Strategy Overview
   Features:       39 (35 base + 4 microstructure)
   Label:          LABEL_ER_4H (Kaufman ER-Weighted 4H Return)
   Strategy:       DynamicThresholdStrategy
-  Long Percentile:  0.85 (top 15%)
-  Short Percentile: 0.15 (bottom 15%)
-  Rolling Window:   720h (30 days)
+  Long Percentile:  0.95 (top 15%)
+  Short Percentile: 0.05 (bottom 15%)
+  Rolling Window:   1440h (30 days)
 
 Training Configuration
   Method:     Expanding Window Rolling
@@ -25,18 +25,18 @@ Backtest Performance
   Period:           2021-01-01 ~ 2026-05-23
 
   Initial Capital:        100,000.00 USDT
-  Final Value:             46,650.63 USDT
-  Total Return:              -53.35%
-  Benchmark (B&H):           578.29%
-  Annual Return:             -13.19%
-  Annual Volatility:          26.21%
-  Sharpe Ratio:             -0.4079
-  Max Drawdown:              -68.28%
-  Calmar Ratio:             -0.1932
-  Win Rate:                    7.79%
-  Profit/Loss Ratio:         0.9885
-  Total Trades:                7222
-  Avg Turnover:               14.95%
+  Final Value:             95,045.38 USDT
+  Total Return:               -4.95%
+  Benchmark (B&H):              N/A
+  Annual Return:              -0.94%
+  Annual Volatility:           5.06%
+  Sharpe Ratio:             -0.1615
+  Max Drawdown:              -19.21%
+  Calmar Ratio:             -0.0489
+  Win Rate:                    2.52%
+  Profit/Loss Ratio:         1.1096
+  Total Trades:                3763
+  Avg Turnover:                2.66%
 
 Trading Costs (Binance USDT Perpetual)
   Open Fee:       0.04% (Taker)

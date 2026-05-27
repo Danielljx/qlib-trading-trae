@@ -5,14 +5,16 @@ from qlib.strategy.base import BaseStrategy
 from qlib.backtest.utils import CommonInfrastructure
 from qlib.utils import init_instance_by_config
 from qlib.backtest.account import Account
-from qlib.backtest.exchange import Exchange
+from qlib.backtest.position import Position
+from qlib.backtest.decision import BaseTradeDecision, OrderDir
 from qlib.backtest import backtest_loop
-from qlib.backtest.decision import BaseTradeDecision
 from qlib.backtest.utils import TradeCalendarManager
 
+from BTC_Short_Term_v1.backtest.crypto_exchange import CryptoExchange
 
 _orig_init = BaseTradeDecision.__init__
 _orig_get_step_time = TradeCalendarManager.get_step_time
+_orig_sell_stock = Position._sell_stock
 
 
 def _patched_init(self, strategy, trade_range=None):
@@ -41,15 +43,30 @@ def _patched_get_step_time(self, trade_step=None, shift=0):
     return self._calendar[calendar_index], self._calendar[calendar_index + 1]
 
 
+def _patched_sell_stock(self, stock_id, trade_val, cost, trade_price):
+    trade_amount = trade_val / trade_price
+    if stock_id not in self.position:
+        self._init_stock(stock_id=stock_id, amount=-trade_amount, price=trade_price)
+    else:
+        self.position[stock_id]["amount"] -= trade_amount
+    new_cash = trade_val - cost
+    if self._settle_type == self.ST_CASH:
+        self.position["cash_delay"] += new_cash
+    elif self._settle_type == self.ST_NO:
+        self.position["cash"] += new_cash
+
+
 def run_backtest(predictions, backtest_config, start_time, end_time):
     BaseTradeDecision.__init__ = _patched_init
     TradeCalendarManager.get_step_time = _patched_get_step_time
+    Position._sell_stock = _patched_sell_stock
 
     try:
         return _run_backtest_impl(predictions, backtest_config, start_time, end_time)
     finally:
         BaseTradeDecision.__init__ = _orig_init
         TradeCalendarManager.get_step_time = _orig_get_step_time
+        Position._sell_stock = _orig_sell_stock
 
 
 def _run_backtest_impl(predictions, backtest_config, start_time, end_time):
@@ -57,9 +74,9 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time):
     signal_df = predictions.to_frame(name="score")
 
     freq = backtest_config["freq"]
-    init_cash = float(backtest_config["account"])
+    init_cash = float(backtest_config["init_cash"])
 
-    trade_exchange = Exchange(
+    trade_exchange = CryptoExchange(
         freq=freq,
         start_time=start_time,
         end_time=end_time,
@@ -70,13 +87,14 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time):
         close_cost=backtest_config["close_cost"],
         min_cost=backtest_config["min_cost"],
         impact_cost=backtest_config.get("slippage", 0.0001),
+        trade_unit=None,
     )
 
     trade_account = Account(
         init_cash=init_cash,
-        position_dict={},
+        position_dict={"BTCUSDT": {"amount": 0.0, "price": 0.0}},
         freq=freq,
-        benchmark_config={"benchmark": backtest_config.get("benchmark", None)},
+        benchmark_config={"benchmark": None},
         pos_type=backtest_config["pos_type"],
         port_metr_enabled=True,
     )
@@ -87,14 +105,15 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time):
     )
 
     strategy_config = {
-        "class": "BTC_Short_Term_v1.strategies.DynamicThresholdStrategy",
-        "module_path": "BTC_Short_Term_v1.strategies",
+        "class": "DynamicThresholdStrategy",
+        "module_path": "BTC_Short_Term_v1.strategies.dynamic_threshold_strategy",
         "kwargs": {
             "signal": signal_df,
             "long_percentile": backtest_config["long_percentile"],
             "short_percentile": backtest_config["short_percentile"],
             "rolling_window": backtest_config["rolling_window"],
             "position_ratio": backtest_config["position_ratio"],
+            "pos_side": backtest_config.get("pos_side", "both"),
         },
     }
 
