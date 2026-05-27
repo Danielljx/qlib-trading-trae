@@ -1,1 +1,1 @@
-from .threshold_strategy import ThresholdSignalStrategy
+from .dynamic_threshold_strategy import DynamicThresholdStrategy

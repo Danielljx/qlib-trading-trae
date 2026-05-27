@@ -40,10 +40,29 @@ def _get_config():
         ("VWAP_0", "$close / $close - 1"),
     ]
 
-    LABEL_1H_EXPR = "Ref($close, -2) / Ref($close, -1) - 1"
-    LABEL_1H_NAME = "LABEL_1H"
+    MICRO_4 = [
+        ("QVOL_RATIO", "$quote_volume / Mean($quote_volume, 24) - 1"),
+        ("TAKER_BUY_RATIO", "$taker_buy_quote_volume / ($quote_volume + 1e-12)"),
+        ("TAKER_VOL_RATIO", "$taker_buy_volume / ($volume + 1e-12)"),
+        ("TRADES_RATIO", "$trades / Mean($trades, 24) - 1"),
+    ]
 
-    return ALPHA_35, LABEL_1H_EXPR, LABEL_1H_NAME
+    ALPHA_39 = ALPHA_35 + MICRO_4
+
+    P_in = "Ref($open, -1)"
+    C1 = "Ref($close, -1)"
+    C2 = "Ref($close, -2)"
+    C3 = "Ref($close, -3)"
+    C4 = "Ref($close, -4)"
+
+    net_change = f"Abs({C4} - {P_in})"
+    path_length = f"(Abs({C1} - {P_in}) + Abs({C2} - {C1}) + Abs({C3} - {C2}) + Abs({C4} - {C3}))"
+    er = f"({net_change} / ({path_length} + 1e-12))"
+    raw_return = f"({C4} / {P_in} - 1)"
+    LABEL_ER_4H_EXPR = f"({raw_return} * {er})"
+    LABEL_ER_4H_NAME = "LABEL_ER_4H"
+
+    return ALPHA_39, LABEL_ER_4H_EXPR, LABEL_ER_4H_NAME
 
 
 class CryptoDataHandler(DataHandlerLP):
@@ -58,10 +77,10 @@ class CryptoDataHandler(DataHandlerLP):
         fit_start_time=None,
         fit_end_time=None,
     ):
-        ALPHA_35, LABEL_1H_EXPR, LABEL_1H_NAME = _get_config()
+        ALPHA_39, LABEL_ER_4H_EXPR, LABEL_ER_4H_NAME = _get_config()
 
-        fields = [expr for _, expr in ALPHA_35]
-        names = [name for name, _ in ALPHA_35]
+        fields = [expr for _, expr in ALPHA_39]
+        names = [name for name, _ in ALPHA_39]
 
         if infer_processors is None:
             infer_processors = [
@@ -86,7 +105,7 @@ class CryptoDataHandler(DataHandlerLP):
                 "kwargs": {
                     "config": {
                         "feature": (fields, names),
-                        "label": ([LABEL_1H_EXPR], [LABEL_1H_NAME]),
+                        "label": ([LABEL_ER_4H_EXPR], [LABEL_ER_4H_NAME]),
                     },
                     "freq": freq,
                 },

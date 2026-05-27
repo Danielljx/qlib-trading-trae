@@ -1,7 +1,7 @@
 LGBM_CONFIG = {
     "loss": "mse",
     "objective": "huber",
-    "alpha": 0.9,
+    "alpha": 0.95,
     "learning_rate": 0.015,
     "num_boost_round": 500,
     "early_stopping_rounds": 50,

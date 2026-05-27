@@ -87,12 +87,13 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time):
     )
 
     strategy_config = {
-        "class": "BTC_Short_Term_v1.strategies.ThresholdSignalStrategy",
+        "class": "BTC_Short_Term_v1.strategies.DynamicThresholdStrategy",
         "module_path": "BTC_Short_Term_v1.strategies",
         "kwargs": {
             "signal": signal_df,
-            "long_threshold": backtest_config["long_threshold"],
-            "short_threshold": backtest_config["short_threshold"],
+            "long_percentile": backtest_config["long_percentile"],
+            "short_percentile": backtest_config["short_percentile"],
+            "rolling_window": backtest_config["rolling_window"],
             "position_ratio": backtest_config["position_ratio"],
         },
     }

@@ -9,7 +9,8 @@ BACKTEST_CONFIG = {
     "pos_type": "Position",
     "account": 100000,
     "benchmark": "btcusdt",
-    "long_threshold": 0.001,
-    "short_threshold": -0.001,
+    "long_percentile": 0.85,
+    "short_percentile": 0.15,
+    "rolling_window": 720,
     "position_ratio": 0.95,
 }

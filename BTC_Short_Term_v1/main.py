@@ -8,11 +8,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def main():
     print("=" * 60)
-    print("  BTCUSDT Short-Term Strategy v1")
+    print("  BTCUSDT Short-Term Strategy v1 (Ultimate)")
+    print("  Kaufman ER-Adjusted Label + Dynamic Threshold")
     print("=" * 60)
 
     print("\n[1/5] Initializing Qlib...")
-    qlib.init(provider_uri="/workspace/qlib_data", region=REG_CN)
+    qlib.init(provider_uri="/workspace/BTC_Short_Term_v1/btcusdt_1h_full", region=REG_CN)
     from BTC_Short_Term_v1.config import LGBM_CONFIG, DATA_CONFIG, TRAINING_CONFIG, BACKTEST_CONFIG
 
     print(f"      Data provider: {DATA_CONFIG['provider_uri']}")
