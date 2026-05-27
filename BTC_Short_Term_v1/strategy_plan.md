@@ -62,6 +62,16 @@
 - 极值因子 (2个)
 - 价格记忆因子 (4个)
 
+### 2.2 新增微观结构因子 (4个)
+基于新增的 quote_volume、taker_buy_quote_volume、taker_buy_volume、trades 四个维度数据：
+
+| 因子名称 | 计算表达式 | 说明 |
+|---------|----------|------|
+| QVOL_RATIO | `$quote_volume / Mean($quote_volume, 24) - 1` | 成交额相对24小时均值的变化率 |
+| TAKER_BUY_RATIO | `$taker_buy_quote_volume / ($quote_volume + 1e-12)` | 主动买入成交额占比 |
+| TAKER_VOL_RATIO | `$taker_buy_volume / ($volume + 1e-12)` | 主动买入成交量占比 |
+| TRADES_RATIO | `$trades / Mean($trades, 24) - 1` | 成交笔数相对24小时均值的变化率 |
+
 
 
 ### 2.3 因子审查审计（前向/后向检查）
@@ -69,6 +79,7 @@
 | 因子类别 | 包含未来数据? | 审计状态 |
 |----------|--------------|---------|
 | 基础因子35个 | ❌ 否 | ✅ 通过 |
+| 微观结构因子4个 | ❌ 否 | ✅ 通过 |
 | **Label (预测目标)** | **✅ 是（这是标签！）** | ✅ 作为标签使用 |
 
 ---
@@ -410,7 +421,7 @@ strategy_config = {
 ```
 CryptoHandler:
 ├── 基础35因子
-├── 新增4个微观结构因子
+├── 新增4个微观结构因子 (QVOL_RATIO, TAKER_BUY_RATIO, TAKER_VOL_RATIO, TRADES_RATIO)
 └── Kaufman ER加权标签 (LABEL_ER_4H)
 ```
 
