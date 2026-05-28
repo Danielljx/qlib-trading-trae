@@ -20,12 +20,6 @@ def generate_report(metrics_df, pm_df, trade_df, config=None):
 
     calmar = annual_return / abs(max_dd) if max_dd and abs(max_dd) > 0 else np.nan
 
-    benchmark_return = np.nan
-    if pm_df is not None and len(pm_df) > 0 and "bench" in pm_df.columns:
-        bench_series = pm_df["bench"].dropna()
-        if len(bench_series) > 0:
-            benchmark_return = (1 + bench_series).prod() - 1
-
     annual_vol = np.nan
     if pm_df is not None and len(pm_df) > 0 and "return" in pm_df.columns:
         returns = pm_df["return"].dropna()
@@ -50,21 +44,37 @@ def generate_report(metrics_df, pm_df, trade_df, config=None):
 
     lines = []
     lines.append("=" * 60)
-    lines.append("  BTCUSDT Short-Term Strategy v1 - Backtest Report")
-    lines.append("  (Kaufman ER-Adjusted Label + Dynamic Threshold)")
+    lines.append("  BTCUSDT Short-Term Strategy v2 - Backtest Report")
+    lines.append("  (Schmitt Trigger + ATR Trailing Stop + Vol-Targeting)")
     lines.append("=" * 60)
     lines.append("")
     lines.append("Strategy Overview")
-    lines.append("  Name:           BTC Short-Term v1 (Ultimate)")
+    lines.append("  Name:           BTC Short-Term v2 (Enhanced)")
     lines.append("  Instrument:     BTCUSDT")
     lines.append("  Frequency:      1 Hour (60min)")
     lines.append(f"  Model:          LightGBM (Huber Loss, alpha={model_config.get('alpha', 0.95)})")
     lines.append(f"  Features:       39 (35 base + 4 microstructure)")
     lines.append("  Label:          LABEL_ER_4H (Kaufman ER-Weighted 4H Return)")
-    lines.append("  Strategy:       DynamicThresholdStrategy")
-    lines.append(f"  Long Percentile:  {backtest_config.get('long_percentile', 0.85)} (top 15%)")
-    lines.append(f"  Short Percentile: {backtest_config.get('short_percentile', 0.15)} (bottom 15%)")
-    lines.append(f"  Rolling Window:   {backtest_config.get('rolling_window', 720)}h (30 days)")
+    lines.append("  Strategy:       DynamicThresholdStrategy (Enhanced)")
+    lines.append("")
+    lines.append("Schmitt Trigger (Hysteresis)")
+    lines.append(f"  Entry Long:     {backtest_config.get('long_percentile', 0.95):.0%} percentile (strict)")
+    lines.append(f"  Exit Long:      {backtest_config.get('exit_long_percentile', 0.50):.0%} percentile (relaxed)")
+    lines.append(f"  Entry Short:    {backtest_config.get('short_percentile', 0.05):.0%} percentile")
+    lines.append(f"  Exit Short:     {backtest_config.get('exit_short_percentile', 0.50):.0%} percentile")
+    lines.append(f"  Rolling Window: {backtest_config.get('rolling_window', 720)}h")
+    lines.append(f"  Pos Side:       {backtest_config.get('pos_side', 'long')}")
+    lines.append("")
+    lines.append("CTA Exit Mechanism")
+    lines.append(f"  Max Hold Bars:  {backtest_config.get('max_hold_bars', 4)} (4h label alignment)")
+    lines.append(f"  ATR Stop Mult:  {backtest_config.get('atr_stop_multiplier', 2.0)}x")
+    lines.append(f"  Risk-Reward:    1:{backtest_config.get('risk_reward_ratio', 2.0)}")
+    lines.append(f"  Partial TP:     {backtest_config.get('partial_tp_ratio', 0.50):.0%} at TP1")
+    lines.append(f"  Cooldown:       {backtest_config.get('cooldown_bars', 2)} bars after exit")
+    lines.append("")
+    lines.append("Volatility-Targeting Position Sizing")
+    lines.append(f"  Risk/Trade:     {backtest_config.get('risk_per_trade', 0.02):.0%} of capital")
+    lines.append(f"  Max Position:   {backtest_config.get('position_ratio', 0.30):.0%} of capital")
     lines.append("")
     lines.append("Training Configuration")
     lines.append("  Method:     Expanding Window Rolling")
@@ -78,31 +88,19 @@ def generate_report(metrics_df, pm_df, trade_df, config=None):
     lines.append(f"  Initial Capital:      {init_cash:>12,.2f} USDT")
     lines.append(f"  Final Value:          {final_value:>12,.2f} USDT")
     lines.append(f"  Total Return:         {total_return*100:>11.2f}%")
-    if not np.isnan(benchmark_return):
-        lines.append(f"  Benchmark (B&H):      {benchmark_return*100:>11.2f}%")
-    else:
-        lines.append(f"  Benchmark (B&H):      {'N/A':>11}")
     lines.append(f"  Annual Return:        {annual_return*100:>11.2f}%")
     if not np.isnan(annual_vol):
         lines.append(f"  Annual Volatility:    {annual_vol*100:>11.2f}%")
-    else:
-        lines.append(f"  Annual Volatility:    {'N/A':>11}")
     lines.append(f"  Sharpe Ratio:         {sharpe:>11.4f}")
     lines.append(f"  Max Drawdown:         {max_dd*100:>11.2f}%")
     if not np.isnan(calmar):
         lines.append(f"  Calmar Ratio:         {calmar:>11.4f}")
-    else:
-        lines.append(f"  Calmar Ratio:         {'N/A':>11}")
     lines.append(f"  Win Rate:             {win_rate*100:>11.2f}%")
     if not np.isnan(profit_loss_ratio):
         lines.append(f"  Profit/Loss Ratio:    {profit_loss_ratio:>11.4f}")
-    else:
-        lines.append(f"  Profit/Loss Ratio:    {'N/A':>11}")
     lines.append(f"  Total Trades:         {n_trades:>11d}")
     if turnover_mean:
         lines.append(f"  Avg Turnover:         {turnover_mean*100:>11.2f}%")
-    else:
-        lines.append(f"  Avg Turnover:         {'N/A':>11}")
     lines.append("")
     lines.append("Trading Costs (Binance USDT Perpetual)")
     lines.append(f"  Open Fee:       {backtest_config.get('open_cost', 0)*100:.2f}% (Taker)")

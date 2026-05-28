@@ -9,9 +9,18 @@ BACKTEST_CONFIG: dict = {
 
     "long_percentile": 0.95,
     "short_percentile": 0.05,
+    "exit_long_percentile": 0.50,
+    "exit_short_percentile": 0.50,
     "rolling_window": 720,
     "position_ratio": 0.30,
     "pos_side": "long",
+
+    "max_hold_bars": 4,
+    "atr_stop_multiplier": 2.0,
+    "risk_reward_ratio": 2.0,
+    "partial_tp_ratio": 0.50,
+    "risk_per_trade": 0.02,
+    "cooldown_bars": 2,
 
     "limit_threshold": None,
     "open_cost": 0.0004,

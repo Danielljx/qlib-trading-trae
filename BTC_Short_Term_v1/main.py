@@ -1,26 +1,26 @@
 import sys
 import os
+import pandas as pd
 import qlib
 from qlib.constant import REG_CN
+from qlib.data import D
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def main():
     print("=" * 60)
-    print("  BTCUSDT Short-Term Strategy v1 (Ultimate)")
-    print("  Kaufman ER-Adjusted Label + Dynamic Threshold")
+    print("  BTCUSDT Short-Term Strategy v2 (Enhanced)")
+    print("  Schmitt Trigger + ATR Trailing Stop + Vol-Targeting")
     print("=" * 60)
 
-    print("\n[1/5] Initializing Qlib...")
+    print("\n[1/6] Initializing Qlib...")
     qlib.init(provider_uri="/workspace/BTC_Short_Term_v1/btcusdt_1h_full", region=REG_CN)
     from BTC_Short_Term_v1.config import LGBM_CONFIG, DATA_CONFIG, TRAINING_CONFIG, BACKTEST_CONFIG
 
     print(f"      Data provider: {DATA_CONFIG['provider_uri']}")
-    print(f"      Instrument: {DATA_CONFIG['instrument']}")
-    print(f"      Frequency: {DATA_CONFIG['freq']}")
 
-    print("\n[2/5] Building CryptoDataHandler...")
+    print("\n[2/6] Building CryptoDataHandler...")
     from BTC_Short_Term_v1.features import CryptoDataHandler
 
     handler = CryptoDataHandler(
@@ -35,7 +35,7 @@ def main():
     label_cols = handler.get_cols("label")
     print(f"      Features: {len(feat_cols)}, Label: {label_cols[0] if label_cols else 'N/A'}")
 
-    print("\n[3/5] Rolling Training (Quarterly Expanding Window)...")
+    print("\n[3/6] Rolling Training (Quarterly Expanding Window)...")
     from BTC_Short_Term_v1.models import RollingTrainer
 
     trainer = RollingTrainer(
@@ -47,7 +47,22 @@ def main():
     print(f"      Predictions: {len(predictions)} rows")
     print(f"      Period: {predictions.index.get_level_values('datetime').min()} ~ {predictions.index.get_level_values('datetime').max()}")
 
-    print("\n[4/5] Backtesting...")
+    print("\n[4/6] Computing ATR data for strategy...")
+    atr_df = D.features(
+        instruments=D.instruments("all"),
+        fields=["Mean($high - $low, 24)"],
+        start_time=TRAINING_CONFIG["test_start"],
+        end_time=TRAINING_CONFIG["test_end"],
+        freq="60min",
+    )
+    atr_series = atr_df.iloc[:, 0]
+    if isinstance(atr_series.index, pd.MultiIndex):
+        atr_series = atr_series.droplevel("instrument")
+    atr_series = atr_series.sort_index()
+    atr_series = atr_series.dropna()
+    print(f"      ATR data: {len(atr_series)} rows, mean={atr_series.mean():.2f}")
+
+    print("\n[5/6] Backtesting (Enhanced Strategy)...")
     from BTC_Short_Term_v1.backtest import run_backtest
 
     metrics_df, pm_df, trade_df, port_metrics, ind_metrics = run_backtest(
@@ -55,11 +70,12 @@ def main():
         backtest_config=BACKTEST_CONFIG,
         start_time=TRAINING_CONFIG["test_start"],
         end_time=TRAINING_CONFIG["test_end"],
+        atr_series=atr_series,
     )
     print(f"      Metrics computed: {len(metrics_df)} rows")
 
-    print("\n[5/5] Generating Report...")
-    from BTC_Short_Term_v1.evaluation import generate_report
+    print("\n[6/6] Generating Reports...")
+    from BTC_Short_Term_v1.evaluation import generate_report, RollingEvaluator
 
     report_text = generate_report(
         metrics_df=metrics_df,
@@ -80,6 +96,25 @@ def main():
     with open(report_path, "w") as f:
         f.write(report_text)
     print(f"\nReport saved to: {report_path}")
+
+    print("\n" + "=" * 60)
+    print("  Rolling Training Evaluation")
+    print("=" * 60)
+
+    evaluator = RollingEvaluator(
+        handler=handler,
+        model_config=LGBM_CONFIG,
+        training_config=TRAINING_CONFIG,
+    )
+    eval_df = evaluator.run()
+    eval_report = evaluator.generate_report(eval_df)
+
+    print("\n" + eval_report)
+
+    eval_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rolling_evaluation.txt")
+    with open(eval_path, "w") as f:
+        f.write(eval_report)
+    print(f"\nEvaluation saved to: {eval_path}")
 
     return report_text
 

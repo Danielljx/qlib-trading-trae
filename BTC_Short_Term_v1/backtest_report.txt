@@ -1,19 +1,35 @@
 ============================================================
-  BTCUSDT Short-Term Strategy v1 - Backtest Report
-  (Kaufman ER-Adjusted Label + Dynamic Threshold)
+  BTCUSDT Short-Term Strategy v2 - Backtest Report
+  (Schmitt Trigger + ATR Trailing Stop + Vol-Targeting)
 ============================================================
 
 Strategy Overview
-  Name:           BTC Short-Term v1 (Ultimate)
+  Name:           BTC Short-Term v2 (Enhanced)
   Instrument:     BTCUSDT
   Frequency:      1 Hour (60min)
   Model:          LightGBM (Huber Loss, alpha=0.95)
   Features:       39 (35 base + 4 microstructure)
   Label:          LABEL_ER_4H (Kaufman ER-Weighted 4H Return)
-  Strategy:       DynamicThresholdStrategy
-  Long Percentile:  0.95 (top 15%)
-  Short Percentile: 0.05 (bottom 15%)
-  Rolling Window:   1440h (30 days)
+  Strategy:       DynamicThresholdStrategy (Enhanced)
+
+Schmitt Trigger (Hysteresis)
+  Entry Long:     95% percentile (strict)
+  Exit Long:      50% percentile (relaxed)
+  Entry Short:    5% percentile
+  Exit Short:     50% percentile
+  Rolling Window: 720h
+  Pos Side:       long
+
+CTA Exit Mechanism
+  Max Hold Bars:  4 (4h label alignment)
+  ATR Stop Mult:  2.0x
+  Risk-Reward:    1:2.0
+  Partial TP:     50% at TP1
+  Cooldown:       2 bars after exit
+
+Volatility-Targeting Position Sizing
+  Risk/Trade:     2% of capital
+  Max Position:   30% of capital
 
 Training Configuration
   Method:     Expanding Window Rolling
@@ -25,18 +41,17 @@ Backtest Performance
   Period:           2021-01-01 ~ 2026-05-23
 
   Initial Capital:        100,000.00 USDT
-  Final Value:             95,045.38 USDT
-  Total Return:               -4.95%
-  Benchmark (B&H):              N/A
-  Annual Return:              -0.94%
-  Annual Volatility:           5.06%
-  Sharpe Ratio:             -0.1615
-  Max Drawdown:              -19.21%
-  Calmar Ratio:             -0.0489
-  Win Rate:                    2.52%
-  Profit/Loss Ratio:         1.1096
-  Total Trades:                3763
-  Avg Turnover:                2.66%
+  Final Value:            129,060.20 USDT
+  Total Return:               29.06%
+  Annual Return:               4.85%
+  Annual Volatility:           6.26%
+  Sharpe Ratio:              0.7857
+  Max Drawdown:              -14.01%
+  Calmar Ratio:              0.3460
+  Win Rate:                    4.17%
+  Profit/Loss Ratio:         1.0841
+  Total Trades:                2409
+  Avg Turnover:                1.53%
 
 Trading Costs (Binance USDT Perpetual)
   Open Fee:       0.04% (Taker)
