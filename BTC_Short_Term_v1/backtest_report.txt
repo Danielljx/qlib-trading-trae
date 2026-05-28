@@ -14,9 +14,9 @@ Strategy Overview
 
 Schmitt Trigger (Hysteresis)
   Entry Long:     90% percentile (strict)
-  Exit Long:      50% percentile (relaxed)
+  Exit Long:      20% percentile (relaxed)
   Entry Short:    10% percentile
-  Exit Short:     50% percentile
+  Exit Short:     80% percentile
   Rolling Window: 720h
   Pos Side:       long
 
@@ -41,17 +41,17 @@ Backtest Performance
   Period:           2023-01-01 ~ 2026-05-23
 
   Initial Capital:        100,000.00 USDT
-  Final Value:            108,069.33 USDT
-  Total Return:                8.07%
-  Annual Return:               2.31%
-  Annual Volatility:           5.00%
-  Sharpe Ratio:              0.4808
-  Max Drawdown:              -15.95%
-  Calmar Ratio:              0.1451
-  Win Rate:                    3.38%
-  Profit/Loss Ratio:         1.0673
-  Total Trades:                1021
-  Avg Turnover:                1.36%
+  Final Value:             98,265.08 USDT
+  Total Return:               -1.73%
+  Annual Return:              -0.51%
+  Annual Volatility:           4.58%
+  Sharpe Ratio:             -0.0889
+  Max Drawdown:              -15.45%
+  Calmar Ratio:             -0.0333
+  Win Rate:                    2.36%
+  Profit/Loss Ratio:         1.0810
+  Total Trades:                 634
+  Avg Turnover:                0.83%
 
 Trading Costs (Binance USDT Perpetual)
   Open Fee:       0.04% (Taker)

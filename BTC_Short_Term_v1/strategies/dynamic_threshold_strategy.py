@@ -12,10 +12,12 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         signal=None,
         atr_series=None,
         ma_series=None,
+        ma_fast_series=None,
+        adx_series=None,
         long_percentile=0.90,
         short_percentile=0.10,
-        exit_long_percentile=0.50,
-        exit_short_percentile=0.50,
+        exit_long_percentile=0.20,
+        exit_short_percentile=0.80,
         rolling_window=720,
         position_ratio=0.30,
         pos_side="long",
@@ -26,13 +28,16 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         risk_per_trade=0.02,
         cooldown_bars=2,
         smart_hold_extension=True,
-        smart_hold_atr_threshold=1.5,
+        smart_hold_atr_threshold=1.0,
         use_trend_filter=False,
+        adx_threshold=25,
         **kwargs,
     ):
         self._raw_signal = signal
         self._atr_series = atr_series
         self._ma_series = ma_series
+        self._ma_fast_series = ma_fast_series
+        self._adx_series = adx_series
         self.entry_long_pct = long_percentile
         self.entry_short_pct = short_percentile
         self.exit_long_pct = exit_long_percentile
@@ -49,6 +54,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         self.smart_hold_ext = smart_hold_extension
         self.smart_hold_atr_thresh = smart_hold_atr_threshold
         self.use_trend_filter = use_trend_filter
+        self.adx_threshold = adx_threshold
 
         super().__init__(signal=signal, **kwargs)
 
@@ -71,6 +77,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         self._trade_log = []
         self._filtered_long_count = 0
         self._filtered_short_count = 0
+        self._filtered_adx_count = 0
 
     def _calculate_dynamic_thresholds(self):
         sig_df = self._raw_signal
@@ -109,58 +116,41 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             window=self.window, min_periods=24
         ).quantile(self.exit_short_pct)
 
-    def _get_instrument_code(self, pred_score):
-        if isinstance(pred_score.index, pd.MultiIndex):
-            codes = list(pred_score.index.get_level_values("instrument").unique())
-            return codes[0] if codes else "BTCUSDT"
-        return "BTCUSDT"
-
     def _get_current_pred(self, pred_score):
         if isinstance(pred_score, pd.DataFrame):
             return float(pred_score.iloc[-1, 0])
         return float(pred_score.iloc[-1])
 
-    def _get_atr(self, current_time):
-        if self._atr_series is None:
+    def _lookup_series(self, series, current_time):
+        if series is None:
             return None
         try:
-            return float(self._atr_series.loc[current_time])
-        except (KeyError, TypeError):
-            try:
-                idx = self._atr_series.index.get_indexer([current_time], method="pad")
-                if idx[0] >= 0:
-                    return float(self._atr_series.iloc[idx[0]])
-            except Exception:
-                pass
-        return None
-
-    def _get_ma(self, current_time):
-        if self._ma_series is None:
-            return None
-        try:
-            return float(self._ma_series.loc[current_time])
-        except (KeyError, TypeError):
-            try:
-                idx = self._ma_series.index.get_indexer([current_time], method="pad")
-                if idx[0] >= 0:
-                    return float(self._ma_series.iloc[idx[0]])
-            except Exception:
-                pass
-        return None
-
-    def _get_threshold(self, thresh_series, current_time):
-        try:
-            val = thresh_series.loc[current_time]
+            val = series.loc[current_time]
             return float(val) if pd.notna(val) else None
         except (KeyError, TypeError):
             try:
-                idx = thresh_series.index.get_indexer([current_time], method="pad")
+                idx = series.index.get_indexer([current_time], method="pad")
                 if idx[0] >= 0:
-                    val = thresh_series.iloc[idx[0]]
+                    val = series.iloc[idx[0]]
                     return float(val) if pd.notna(val) else None
             except Exception:
                 pass
         return None
+
+    def _get_atr(self, current_time):
+        return self._lookup_series(self._atr_series, current_time)
+
+    def _get_ma(self, current_time):
+        return self._lookup_series(self._ma_series, current_time)
+
+    def _get_ma_fast(self, current_time):
+        return self._lookup_series(self._ma_fast_series, current_time)
+
+    def _get_adx(self, current_time):
+        return self._lookup_series(self._adx_series, current_time)
+
+    def _get_threshold(self, thresh_series, current_time):
+        return self._lookup_series(thresh_series, current_time)
 
     def _calc_position_size(self, capital, current_price, atr_value):
         if atr_value is not None and atr_value > 0:
@@ -169,6 +159,14 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             pos_btc = (capital * self.position_ratio * 0.5) / current_price
         max_pos_btc = (capital * self.position_ratio) / current_price
         return min(pos_btc, max_pos_btc)
+
+    def _has_significant_profit(self, current_price, atr_value):
+        if not self.smart_hold_ext or atr_value is None or self._entry_price is None:
+            return False
+        if self._direction == "long":
+            return (current_price - self._entry_price) > self.smart_hold_atr_thresh * atr_value
+        else:
+            return (self._entry_price - current_price) > self.smart_hold_atr_thresh * atr_value
 
     def _record_exit(self, exit_time, exit_price, exit_reason, current_amount):
         if self._entry_price is None or self._entry_time is None:
@@ -218,6 +216,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         return {
             "filtered_long": self._filtered_long_count,
             "filtered_short": self._filtered_short_count,
+            "filtered_adx": self._filtered_adx_count,
         }
 
     def generate_trade_decision(self, execute_result=None):
@@ -253,10 +252,15 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         exit_short_th = self._get_threshold(self.exit_short_thresh, current_time)
 
         atr_value = self._get_atr(current_time)
-        ma_value = self._get_ma(current_time)
+        ma_slow = self._get_ma(current_time)
+        ma_fast = self._get_ma_fast(current_time)
+        adx_value = self._get_adx(current_time)
 
-        above_ma = (ma_value is not None and current_price > ma_value)
-        below_ma = (ma_value is not None and current_price < ma_value)
+        above_ma_slow = (ma_slow is not None and current_price > ma_slow)
+        below_ma_slow = (ma_slow is not None and current_price < ma_slow)
+        below_ma_fast = (ma_fast is not None and current_price < ma_fast)
+        above_ma_fast = (ma_fast is not None and current_price > ma_fast)
+        low_adx = (adx_value is not None and adx_value < self.adx_threshold)
 
         cash = self.trade_position.get_cash()
         current_amount = self.trade_position.get_stock_amount(current_stock)
@@ -323,13 +327,21 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                           and current_pred is not None and entry_short_th is not None
                           and current_pred < entry_short_th)
 
-            if self.use_trend_filter and ma_value is not None:
-                if want_long and below_ma:
+            if self.use_trend_filter and ma_slow is not None:
+                if want_long and below_ma_slow:
                     want_long = False
                     self._filtered_long_count += 1
-                if want_short and above_ma:
+                if want_short and above_ma_slow:
                     want_short = False
                     self._filtered_short_count += 1
+
+            if low_adx:
+                if want_long:
+                    want_long = False
+                    self._filtered_adx_count += 1
+                if want_short:
+                    want_short = False
+                    self._filtered_adx_count += 1
 
             if want_long:
                 pos_btc = self._calc_position_size(portfolio_value, current_price, atr_value)
@@ -389,11 +401,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             should_exit = False
             exit_reason = None
 
-            if self.use_trend_filter and below_ma:
-                should_exit = True
-                exit_reason = "Trend_Filter_Exit"
-
-            if not should_exit and self._stop_loss is not None and current_price <= self._stop_loss:
+            if self._stop_loss is not None and current_price <= self._stop_loss:
                 should_exit = True
                 exit_reason = "SL_Hit"
 
@@ -401,22 +409,24 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                 should_exit = True
                 exit_reason = "Trailing_Stop"
 
+            if not should_exit and below_ma_fast:
+                should_exit = True
+                exit_reason = "Fast_MA_Exit"
+
             if not should_exit and self._bars_held >= self.max_hold_bars:
-                if self.smart_hold_ext and atr_value is not None and self._entry_price is not None:
-                    unrealized_profit = current_price - self._entry_price
-                    if unrealized_profit > self.smart_hold_atr_thresh * atr_value:
-                        pass
-                    else:
-                        should_exit = True
-                        exit_reason = "Time_Exit"
+                if self._has_significant_profit(current_price, atr_value):
+                    pass
                 else:
                     should_exit = True
                     exit_reason = "Time_Exit"
 
             if not should_exit and current_pred is not None and exit_long_th is not None:
                 if current_pred < exit_long_th:
-                    should_exit = True
-                    exit_reason = "Signal_Exit"
+                    if self._has_significant_profit(current_price, atr_value):
+                        pass
+                    else:
+                        should_exit = True
+                        exit_reason = "Signal_Exit"
 
             if not should_exit and not self._partial_tp_hit and self._take_profit is not None:
                 if current_price >= self._take_profit:
@@ -452,11 +462,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             should_exit = False
             exit_reason = None
 
-            if self.use_trend_filter and above_ma:
-                should_exit = True
-                exit_reason = "Trend_Filter_Exit"
-
-            if not should_exit and self._stop_loss is not None and current_price >= self._stop_loss:
+            if self._stop_loss is not None and current_price >= self._stop_loss:
                 should_exit = True
                 exit_reason = "SL_Hit"
 
@@ -464,22 +470,24 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                 should_exit = True
                 exit_reason = "Trailing_Stop"
 
+            if not should_exit and above_ma_fast:
+                should_exit = True
+                exit_reason = "Fast_MA_Exit"
+
             if not should_exit and self._bars_held >= self.max_hold_bars:
-                if self.smart_hold_ext and atr_value is not None and self._entry_price is not None:
-                    unrealized_profit = self._entry_price - current_price
-                    if unrealized_profit > self.smart_hold_atr_thresh * atr_value:
-                        pass
-                    else:
-                        should_exit = True
-                        exit_reason = "Time_Exit"
+                if self._has_significant_profit(current_price, atr_value):
+                    pass
                 else:
                     should_exit = True
                     exit_reason = "Time_Exit"
 
             if not should_exit and current_pred is not None and exit_short_th is not None:
                 if current_pred > exit_short_th:
-                    should_exit = True
-                    exit_reason = "Signal_Exit"
+                    if self._has_significant_profit(current_price, atr_value):
+                        pass
+                    else:
+                        should_exit = True
+                        exit_reason = "Signal_Exit"
 
             if not should_exit and not self._partial_tp_hit and self._take_profit is not None:
                 if current_price <= self._take_profit:

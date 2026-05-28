@@ -9,8 +9,8 @@ BACKTEST_CONFIG: dict = {
 
     "long_percentile": 0.90,
     "short_percentile": 0.10,
-    "exit_long_percentile": 0.50,
-    "exit_short_percentile": 0.50,
+    "exit_long_percentile": 0.20,
+    "exit_short_percentile": 0.80,
     "rolling_window": 720,
     "position_ratio": 0.40,
     "pos_side": "long",
@@ -23,10 +23,13 @@ BACKTEST_CONFIG: dict = {
     "cooldown_bars": 2,
 
     "smart_hold_extension": True,
-    "smart_hold_atr_threshold": 1.5,
+    "smart_hold_atr_threshold": 1.0,
 
     "use_trend_filter": True,
     "trend_filter_ma_period": 120,
+    "trend_filter_ma_fast_period": 20,
+
+    "adx_threshold": 25,
 
     "limit_threshold": None,
     "open_cost": 0.0004,
