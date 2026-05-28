@@ -309,7 +309,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             self._trend_filter_exits += 1
             return "full_exit"
 
-    def _record_exit(self, exit_time, exit_price, exit_reason, current_amount):
+    def _record_exit(self, exit_time, exit_price, exit_reason, current_amount, close_ratio=1.0):
         if self._entry_price is None or self._entry_time is None:
             return
         direction = "Long" if self._direction == "long" else "Short"
@@ -319,6 +319,8 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         else:
             pnl_pct = (self._entry_price - exit_price) / self._entry_price
             mfe_pct = (self._entry_price - self._lowest_price) / self._entry_price if self._lowest_price else 0
+
+        weighted_pnl = pnl_pct * close_ratio
 
         self._trade_count += 1
         self._trade_log.append({
@@ -330,7 +332,9 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             "Entry_Price": round(self._entry_price, 2),
             "Exit_Price": round(exit_price, 2),
             "Exit_Reason": exit_reason,
+            "Close_Ratio": round(close_ratio, 4),
             "PnL_Percent": round(pnl_pct * 100, 4),
+            "Weighted_PnL": round(weighted_pnl * 100, 4),
             "MFE_Percent": round(mfe_pct * 100, 4),
         })
 
@@ -598,7 +602,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                     self._tp1_hit = True
                     self._stop_loss = self._entry_price
                     self._trailing_stop = max(self._trailing_stop or 0, self._entry_price)
-                    self._record_exit(current_time, current_price, "TP1_Hit", current_amount)
+                    self._record_exit(current_time, current_price, "TP1_Hit", current_amount, close_ratio=self.tp1_ratio)
 
             if not should_exit and self._tp1_hit and not self._tp2_hit and self._tp2 is not None:
                 if current_price >= self._tp2:
@@ -613,7 +617,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                         ))
                     self._tp2_hit = True
                     self._trailing_stop = max(self._trailing_stop or 0, self._tp1 or self._entry_price)
-                    self._record_exit(current_time, current_price, "TP2_Hit", current_amount)
+                    self._record_exit(current_time, current_price, "TP2_Hit", current_amount, close_ratio=self.tp2_ratio)
 
             if not should_exit and self._tp2_hit and self._tp3 is not None:
                 if current_price >= self._tp3:
@@ -701,7 +705,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                         ))
                     self._tp2_hit = True
                     self._trailing_stop = min(self._trailing_stop or float("inf"), self._tp1 or self._entry_price)
-                    self._record_exit(current_time, current_price, "TP2_Hit", current_amount)
+                    self._record_exit(current_time, current_price, "TP2_Hit", current_amount, close_ratio=self.tp2_ratio)
 
             if not should_exit and self._tp2_hit and self._tp3 is not None:
                 if current_price <= self._tp3:
