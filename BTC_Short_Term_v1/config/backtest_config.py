@@ -25,6 +25,9 @@ BACKTEST_CONFIG: dict = {
     "smart_hold_extension": True,
     "smart_hold_atr_threshold": 1.5,
 
+    "use_trend_filter": True,
+    "trend_filter_ma_period": 120,
+
     "limit_threshold": None,
     "open_cost": 0.0004,
     "close_cost": 0.0004,

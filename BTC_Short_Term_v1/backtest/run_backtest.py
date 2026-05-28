@@ -56,20 +56,20 @@ def _patched_sell_stock(self, stock_id, trade_val, cost, trade_price):
         self.position["cash"] += new_cash
 
 
-def run_backtest(predictions, backtest_config, start_time, end_time, atr_series=None):
+def run_backtest(predictions, backtest_config, start_time, end_time, atr_series=None, ma_series=None):
     BaseTradeDecision.__init__ = _patched_init
     TradeCalendarManager.get_step_time = _patched_get_step_time
     Position._sell_stock = _patched_sell_stock
 
     try:
-        return _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_series)
+        return _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_series, ma_series)
     finally:
         BaseTradeDecision.__init__ = _orig_init
         TradeCalendarManager.get_step_time = _orig_get_step_time
         Position._sell_stock = _orig_sell_stock
 
 
-def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_series=None):
+def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_series=None, ma_series=None):
     predictions = predictions.sort_index()
     signal_df = predictions.to_frame(name="score")
 
@@ -107,6 +107,7 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_s
     strategy_kwargs = {
         "signal": signal_df,
         "atr_series": atr_series,
+        "ma_series": ma_series,
         "long_percentile": backtest_config["long_percentile"],
         "short_percentile": backtest_config["short_percentile"],
         "exit_long_percentile": backtest_config["exit_long_percentile"],
@@ -122,6 +123,7 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_s
         "cooldown_bars": backtest_config["cooldown_bars"],
         "smart_hold_extension": backtest_config.get("smart_hold_extension", True),
         "smart_hold_atr_threshold": backtest_config.get("smart_hold_atr_threshold", 1.5),
+        "use_trend_filter": backtest_config.get("use_trend_filter", False),
     }
 
     strategy_config = {
@@ -154,8 +156,9 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_s
     metrics_df = _compute_metrics(pm_df, init_cash, trade_df)
 
     trade_log = trade_strategy.get_trade_log()
+    filter_stats = trade_strategy.get_filter_stats()
 
-    return metrics_df, pm_df, trade_df, portfolio_metrics, indicator_metrics, trade_log
+    return metrics_df, pm_df, trade_df, portfolio_metrics, indicator_metrics, trade_log, filter_stats
 
 
 def _extract_trades_from_indicator(indicator_metrics):

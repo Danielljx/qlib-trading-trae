@@ -5,9 +5,10 @@ import numpy as np
 
 class TradeAnalyzer:
 
-    def __init__(self, trade_log_df, output_dir="."):
+    def __init__(self, trade_log_df, output_dir=".", filter_stats=None):
         self.trade_log = trade_log_df.copy() if trade_log_df is not None and len(trade_log_df) > 0 else pd.DataFrame()
         self.output_dir = output_dir
+        self.filter_stats = filter_stats or {}
 
     def export_trade_log(self, filename="trade_behavior_log.csv"):
         if len(self.trade_log) == 0:
@@ -68,7 +69,7 @@ class TradeAnalyzer:
                 reason_trades = df[df["Exit_Reason"] == reason]
                 avg_r = reason_trades["PnL_Percent"].mean()
                 wr = (reason_trades["PnL_Percent"] > 0).mean() * 100
-                lines.append(f"    {reason:<16}: {cnt:>4} trades  |  Avg PnL%: {avg_r:>8.4f}%  |  Win Rate: {wr:.1f}%")
+                lines.append(f"    {reason:<20}: {cnt:>4} trades  |  Avg PnL%: {avg_r:>8.4f}%  |  Win Rate: {wr:.1f}%")
         lines.append("")
 
         if "MFE_Percent" in df.columns:
@@ -83,10 +84,26 @@ class TradeAnalyzer:
                 lines.append(f"  TP Efficiency (PnL/MFE): {efficiency:.1f}%  <- lower = TP too tight")
 
         lines.append("")
+
+        if self.filter_stats:
+            filtered_long = self.filter_stats.get("filtered_long", 0)
+            filtered_short = self.filter_stats.get("filtered_short", 0)
+            total_filtered = filtered_long + filtered_short
+            if total_filtered > 0:
+                lines.append("  Trend Filter Statistics:")
+                lines.append(f"    Filtered Long Signals:  {filtered_long}")
+                lines.append(f"    Filtered Short Signals: {filtered_short}")
+                lines.append(f"    Total Filtered Signals: {total_filtered}")
+                open_cost = 0.0004
+                close_cost = 0.0004
+                saved_cost = total_filtered * (open_cost + close_cost) * 100
+                lines.append(f"    Est. Saved Fee Cost:    {saved_cost:.2f}% of notional")
+
+        lines.append("")
         lines.append("=" * 90)
         return "\n".join(lines)
 
-    def generate_rolling_performance_matrix(self, pm_df, step_months=3):
+    def generate_rolling_performance_matrix(self, pm_df, step_months=1):
         if len(self.trade_log) == 0:
             print("[TradeAnalyzer] No trade records for rolling matrix.")
             return pd.DataFrame()
@@ -97,9 +114,13 @@ class TradeAnalyzer:
             return pd.DataFrame()
 
         trade_df["Exit_Time"] = pd.to_datetime(trade_df["Exit_Time"])
-        trade_df["Window_Period"] = trade_df["Exit_Time"].apply(
-            lambda t: f"{t.year}-Q{(t.month - 1) // 3 + 1}"
-        )
+
+        if step_months == 1:
+            trade_df["Window_Period"] = trade_df["Exit_Time"].dt.strftime("%Y-%m")
+        else:
+            trade_df["Window_Period"] = trade_df["Exit_Time"].apply(
+                lambda t: f"{t.year}-Q{(t.month - 1) // 3 + 1}"
+            )
 
         rows = []
         for window, group in trade_df.groupby("Window_Period"):
@@ -118,7 +139,7 @@ class TradeAnalyzer:
                 "Total_Trades": total_trades,
                 "Win_Rate": round(win_rate, 2),
                 "Window_Return": round(window_return, 4),
-                "Max_Drawdown": self._compute_window_drawdown(pm_df, window),
+                "Max_Drawdown": self._compute_window_drawdown(pm_df, window, step_months),
                 "Avg_Hold_Bars": round(avg_hold, 1),
                 "Profit_Factor": round(profit_factor, 4),
             })
@@ -127,21 +148,30 @@ class TradeAnalyzer:
         result_df = result_df.sort_values("Window_Period").reset_index(drop=True)
         return result_df
 
-    def _compute_window_drawdown(self, pm_df, window_period):
+    def _compute_window_drawdown(self, pm_df, window_period, step_months=1):
         if pm_df is None or len(pm_df) == 0:
             return 0.0
 
         try:
-            year_str, q_str = window_period.split("-Q")
-            year = int(year_str)
-            quarter = int(q_str)
-            q_start_month = (quarter - 1) * 3 + 1
-            q_end_month = q_start_month + 2
-            start = pd.Timestamp(f"{year}-{q_start_month:02d}-01")
-            if q_end_month > 12:
-                end = pd.Timestamp(f"{year + 1}-01-01") - pd.Timedelta(days=1)
+            if step_months == 1:
+                year = int(window_period[:4])
+                month = int(window_period[5:7])
+                start = pd.Timestamp(f"{year}-{month:02d}-01")
+                if month == 12:
+                    end = pd.Timestamp(f"{year + 1}-01-01") - pd.Timedelta(days=1)
+                else:
+                    end = pd.Timestamp(f"{year}-{month + 1:02d}-01") - pd.Timedelta(days=1)
             else:
-                end = pd.Timestamp(f"{year}-{q_end_month:02d}-01") - pd.Timedelta(days=1)
+                year_str, q_str = window_period.split("-Q")
+                year = int(year_str)
+                quarter = int(q_str)
+                q_start_month = (quarter - 1) * 3 + 1
+                q_end_month = q_start_month + 2
+                start = pd.Timestamp(f"{year}-{q_start_month:02d}-01")
+                if q_end_month > 12:
+                    end = pd.Timestamp(f"{year + 1}-01-01") - pd.Timedelta(days=1)
+                else:
+                    end = pd.Timestamp(f"{year}-{q_end_month:02d}-01") - pd.Timedelta(days=1)
 
             pm_index = pm_df.index
             if isinstance(pm_index, pd.MultiIndex):
@@ -175,7 +205,7 @@ class TradeAnalyzer:
 
         lines = []
         lines.append("=" * 110)
-        lines.append("  Rolling Performance Matrix (Per-Quarter Trading Metrics)")
+        lines.append("  Rolling Performance Matrix (Per-Window Trading Metrics)")
         lines.append("=" * 110)
         lines.append("")
 

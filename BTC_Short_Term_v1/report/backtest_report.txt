@@ -33,25 +33,25 @@ Volatility-Targeting Position Sizing
 
 Training Configuration
   Method:     Expanding Window Rolling
-  Initial:    2017-01-01 ~ 2020-12-31
+  Initial:    2017-01-01 ~ N/A
   Rolling:    Quarterly (3-month step)
   Valid:      3 months before test
 
 Backtest Performance
-  Period:           2021-01-01 ~ 2026-05-23
+  Period:           2023-01-01 ~ 2026-05-23
 
   Initial Capital:        100,000.00 USDT
-  Final Value:            108,665.36 USDT
-  Total Return:                8.67%
-  Annual Return:               1.55%
-  Annual Volatility:          11.13%
-  Sharpe Ratio:              0.1938
-  Max Drawdown:              -21.56%
-  Calmar Ratio:              0.0721
-  Win Rate:                    8.70%
-  Profit/Loss Ratio:         0.9781
-  Total Trades:                3806
-  Avg Turnover:                3.21%
+  Final Value:            108,069.33 USDT
+  Total Return:                8.07%
+  Annual Return:               2.31%
+  Annual Volatility:           5.00%
+  Sharpe Ratio:              0.4808
+  Max Drawdown:              -15.95%
+  Calmar Ratio:              0.1451
+  Win Rate:                    3.38%
+  Profit/Loss Ratio:         1.0673
+  Total Trades:                1021
+  Avg Turnover:                1.36%
 
 Trading Costs (Binance USDT Perpetual)
   Open Fee:       0.04% (Taker)

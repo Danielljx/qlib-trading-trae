@@ -11,6 +11,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         *,
         signal=None,
         atr_series=None,
+        ma_series=None,
         long_percentile=0.90,
         short_percentile=0.10,
         exit_long_percentile=0.50,
@@ -26,10 +27,12 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         cooldown_bars=2,
         smart_hold_extension=True,
         smart_hold_atr_threshold=1.5,
+        use_trend_filter=False,
         **kwargs,
     ):
         self._raw_signal = signal
         self._atr_series = atr_series
+        self._ma_series = ma_series
         self.entry_long_pct = long_percentile
         self.entry_short_pct = short_percentile
         self.exit_long_pct = exit_long_percentile
@@ -45,6 +48,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         self.cooldown_bars = cooldown_bars
         self.smart_hold_ext = smart_hold_extension
         self.smart_hold_atr_thresh = smart_hold_atr_threshold
+        self.use_trend_filter = use_trend_filter
 
         super().__init__(signal=signal, **kwargs)
 
@@ -65,6 +69,8 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         self._trade_count = 0
 
         self._trade_log = []
+        self._filtered_long_count = 0
+        self._filtered_short_count = 0
 
     def _calculate_dynamic_thresholds(self):
         sig_df = self._raw_signal
@@ -124,6 +130,20 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                 idx = self._atr_series.index.get_indexer([current_time], method="pad")
                 if idx[0] >= 0:
                     return float(self._atr_series.iloc[idx[0]])
+            except Exception:
+                pass
+        return None
+
+    def _get_ma(self, current_time):
+        if self._ma_series is None:
+            return None
+        try:
+            return float(self._ma_series.loc[current_time])
+        except (KeyError, TypeError):
+            try:
+                idx = self._ma_series.index.get_indexer([current_time], method="pad")
+                if idx[0] >= 0:
+                    return float(self._ma_series.iloc[idx[0]])
             except Exception:
                 pass
         return None
@@ -194,6 +214,12 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
     def get_trade_log(self):
         return pd.DataFrame(self._trade_log) if self._trade_log else pd.DataFrame()
 
+    def get_filter_stats(self):
+        return {
+            "filtered_long": self._filtered_long_count,
+            "filtered_short": self._filtered_short_count,
+        }
+
     def generate_trade_decision(self, execute_result=None):
         trade_step = self.trade_calendar.get_trade_step()
         trade_start_time, trade_end_time = self.trade_calendar.get_step_time(trade_step)
@@ -227,6 +253,10 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         exit_short_th = self._get_threshold(self.exit_short_thresh, current_time)
 
         atr_value = self._get_atr(current_time)
+        ma_value = self._get_ma(current_time)
+
+        above_ma = (ma_value is not None and current_price > ma_value)
+        below_ma = (ma_value is not None and current_price < ma_value)
 
         cash = self.trade_position.get_cash()
         current_amount = self.trade_position.get_stock_amount(current_stock)
@@ -288,7 +318,20 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             if self._cooldown > 0:
                 return TradeDecisionWO([], self)
 
-            if current_pred is not None and entry_long_th is not None and current_pred > entry_long_th:
+            want_long = (current_pred is not None and entry_long_th is not None and current_pred > entry_long_th)
+            want_short = (self.pos_side == "both"
+                          and current_pred is not None and entry_short_th is not None
+                          and current_pred < entry_short_th)
+
+            if self.use_trend_filter and ma_value is not None:
+                if want_long and below_ma:
+                    want_long = False
+                    self._filtered_long_count += 1
+                if want_short and above_ma:
+                    want_short = False
+                    self._filtered_short_count += 1
+
+            if want_long:
                 pos_btc = self._calc_position_size(portfolio_value, current_price, atr_value)
                 if pos_btc > 1e-8:
                     order_list.append(Order(
@@ -315,9 +358,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                         self._take_profit = current_price * 1.06
                     self._trailing_stop = self._stop_loss
 
-            elif (self._state == "flat" and self.pos_side == "both"
-                  and current_pred is not None and entry_short_th is not None
-                  and current_pred < entry_short_th):
+            elif want_short:
                 pos_btc = self._calc_position_size(portfolio_value, current_price, atr_value)
                 if pos_btc > 1e-8:
                     order_list.append(Order(
@@ -348,7 +389,11 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             should_exit = False
             exit_reason = None
 
-            if self._stop_loss is not None and current_price <= self._stop_loss:
+            if self.use_trend_filter and below_ma:
+                should_exit = True
+                exit_reason = "Trend_Filter_Exit"
+
+            if not should_exit and self._stop_loss is not None and current_price <= self._stop_loss:
                 should_exit = True
                 exit_reason = "SL_Hit"
 
@@ -407,7 +452,11 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             should_exit = False
             exit_reason = None
 
-            if self._stop_loss is not None and current_price >= self._stop_loss:
+            if self.use_trend_filter and above_ma:
+                should_exit = True
+                exit_reason = "Trend_Filter_Exit"
+
+            if not should_exit and self._stop_loss is not None and current_price >= self._stop_loss:
                 should_exit = True
                 exit_reason = "SL_Hit"
 
