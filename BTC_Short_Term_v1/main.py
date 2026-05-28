@@ -34,7 +34,7 @@ def _compute_adx(high, low, close, period=14):
 def main():
     print("=" * 60)
     print("  BTCUSDT Short-Term Strategy v4")
-    print("  Sliding Window + Dual MA + ADX Filter + Smart Hold")
+    print("  3-Level Soft Trend Filter + Tiered TP + Short Side")
     print("=" * 60)
 
     print("\n[1/7] Initializing Qlib...")
@@ -42,9 +42,12 @@ def main():
     from BTC_Short_Term_v1.config import LGBM_CONFIG, DATA_CONFIG, TRAINING_CONFIG, BACKTEST_CONFIG
 
     print(f"      Data provider: {DATA_CONFIG['provider_uri']}")
-    print(f"      Rolling: {TRAINING_CONFIG.get('rolling_type', 'expanding')}, step={TRAINING_CONFIG.get('rolling_step_months', 3)}mo, window={TRAINING_CONFIG.get('train_window_months', 'N/A')}mo")
-    print(f"      Trend filter: {BACKTEST_CONFIG.get('use_trend_filter', False)}, ADX threshold: {BACKTEST_CONFIG.get('adx_threshold', 25)}")
-    print(f"      Exit long pct: {BACKTEST_CONFIG.get('exit_long_percentile', 0.5)}, Smart hold ATR: {BACKTEST_CONFIG.get('smart_hold_atr_threshold', 1.5)}")
+    print(f"      Rolling: {TRAINING_CONFIG.get('rolling_type', 'expanding')}, step={TRAINING_CONFIG.get('rolling_step_months', 3)}mo, window={TRAINING_CONFIG.get('train_window_months', 'N/A')}mo, valid={TRAINING_CONFIG.get('valid_window_months', 'N/A')}mo")
+    print(f"      Pos side: {BACKTEST_CONFIG.get('pos_side', 'long')}")
+    print(f"      Trend filter: {BACKTEST_CONFIG.get('use_trend_filter', False)}")
+    print(f"      ADX strong/weak: {BACKTEST_CONFIG.get('adx_strong', 30)}/{BACKTEST_CONFIG.get('adx_weak', 20)}")
+    print(f"      TP levels: {BACKTEST_CONFIG.get('tp1_multiplier', 1.0)}/{BACKTEST_CONFIG.get('tp2_multiplier', 1.5)}/{BACKTEST_CONFIG.get('tp3_multiplier', 2.0)}xATR")
+    print(f"      Max hold bars: {BACKTEST_CONFIG.get('max_hold_bars', 12)}")
 
     print("\n[2/7] Building CryptoDataHandler...")
     from BTC_Short_Term_v1.features import CryptoDataHandler
@@ -61,7 +64,7 @@ def main():
     label_cols = handler.get_cols("label")
     print(f"      Features: {len(feat_cols)}, Label: {label_cols[0] if label_cols else 'N/A'}")
 
-    print("\n[3/7] Rolling Training (Monthly Sliding Window, 24mo)...")
+    print("\n[3/7] Rolling Training (Sliding Window, 18mo train, 1mo valid)...")
     from BTC_Short_Term_v1.models import RollingTrainer
 
     trainer = RollingTrainer(
@@ -73,7 +76,7 @@ def main():
     print(f"      Predictions: {len(predictions)} rows")
     print(f"      Period: {predictions.index.get_level_values('datetime').min()} ~ {predictions.index.get_level_values('datetime').max()}")
 
-    print("\n[4/7] Computing ATR + MA120 + MA20 + ADX14 data...")
+    print("\n[4/7] Computing market data (ATR/ATR_mean/MA120/MA20/ADX14)...")
     test_start = TRAINING_CONFIG["test_start"]
     test_end = TRAINING_CONFIG["test_end"]
 
@@ -89,6 +92,10 @@ def main():
         atr_series = atr_series.droplevel("instrument")
     atr_series = atr_series.sort_index().dropna()
     print(f"      ATR24: {len(atr_series)} rows, mean={atr_series.mean():.2f}")
+
+    atr_mean_series = atr_series.rolling(window=480, min_periods=120).mean()
+    atr_mean_series = atr_mean_series.dropna()
+    print(f"      ATR24_mean(480): {len(atr_mean_series)} rows, mean={atr_mean_series.mean():.2f}")
 
     ohlcv_df = D.features(
         instruments=D.instruments("all"),
@@ -113,10 +120,14 @@ def main():
 
     adx_series = _compute_adx(ohlcv_df["$high"], ohlcv_df["$low"], ohlcv_df["$close"], period=14)
     adx_series = adx_series.dropna()
-    adx_below_25 = (adx_series < 25).sum()
-    print(f"      ADX14: {len(adx_series)} rows, mean={adx_series.mean():.1f}, below 25: {adx_below_25} bars ({adx_below_25/len(adx_series)*100:.1f}%)")
+    adx_below_20 = (adx_series < 20).sum()
+    adx_20_30 = ((adx_series >= 20) & (adx_series <= 30)).sum()
+    adx_above_30 = (adx_series > 30).sum()
+    total_bars = len(adx_series)
+    print(f"      ADX14: {total_bars} rows, mean={adx_series.mean():.1f}")
+    print(f"      ADX<20: {adx_below_20} ({adx_below_20/total_bars*100:.1f}%), 20-30: {adx_20_30} ({adx_20_30/total_bars*100:.1f}%), >30: {adx_above_30} ({adx_above_30/total_bars*100:.1f}%)")
 
-    print("\n[5/7] Backtesting (Dual MA + ADX Filter + Smart Hold)...")
+    print("\n[5/7] Backtesting (3-Level Soft Filter + Tiered TP + Both Sides)...")
     from BTC_Short_Term_v1.backtest import run_backtest
 
     metrics_df, pm_df, trade_df, port_metrics, ind_metrics, trade_log, filter_stats = run_backtest(
@@ -125,6 +136,7 @@ def main():
         start_time=test_start,
         end_time=test_end,
         atr_series=atr_series,
+        atr_mean_series=atr_mean_series,
         ma_series=ma_slow_series,
         ma_fast_series=ma_fast_series,
         adx_series=adx_series,

@@ -56,20 +56,25 @@ def _patched_sell_stock(self, stock_id, trade_val, cost, trade_price):
         self.position["cash"] += new_cash
 
 
-def run_backtest(predictions, backtest_config, start_time, end_time, atr_series=None, ma_series=None, ma_fast_series=None, adx_series=None):
+def run_backtest(predictions, backtest_config, start_time, end_time,
+                 atr_series=None, atr_mean_series=None,
+                 ma_series=None, ma_fast_series=None, adx_series=None):
     BaseTradeDecision.__init__ = _patched_init
     TradeCalendarManager.get_step_time = _patched_get_step_time
     Position._sell_stock = _patched_sell_stock
 
     try:
-        return _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_series, ma_series, ma_fast_series, adx_series)
+        return _run_backtest_impl(predictions, backtest_config, start_time, end_time,
+                                  atr_series, atr_mean_series, ma_series, ma_fast_series, adx_series)
     finally:
         BaseTradeDecision.__init__ = _orig_init
         TradeCalendarManager.get_step_time = _orig_get_step_time
         Position._sell_stock = _orig_sell_stock
 
 
-def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_series=None, ma_series=None, ma_fast_series=None, adx_series=None):
+def _run_backtest_impl(predictions, backtest_config, start_time, end_time,
+                       atr_series=None, atr_mean_series=None,
+                       ma_series=None, ma_fast_series=None, adx_series=None):
     predictions = predictions.sort_index()
     signal_df = predictions.to_frame(name="score")
 
@@ -107,6 +112,7 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_s
     strategy_kwargs = {
         "signal": signal_df,
         "atr_series": atr_series,
+        "atr_mean_series": atr_mean_series,
         "ma_series": ma_series,
         "ma_fast_series": ma_fast_series,
         "adx_series": adx_series,
@@ -116,7 +122,7 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_s
         "exit_short_percentile": backtest_config["exit_short_percentile"],
         "rolling_window": backtest_config["rolling_window"],
         "position_ratio": backtest_config["position_ratio"],
-        "pos_side": backtest_config.get("pos_side", "long"),
+        "pos_side": backtest_config.get("pos_side", "both"),
         "max_hold_bars": backtest_config["max_hold_bars"],
         "atr_stop_multiplier": backtest_config["atr_stop_multiplier"],
         "risk_reward_ratio": backtest_config["risk_reward_ratio"],
@@ -125,8 +131,17 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_s
         "cooldown_bars": backtest_config["cooldown_bars"],
         "smart_hold_extension": backtest_config.get("smart_hold_extension", True),
         "smart_hold_atr_threshold": backtest_config.get("smart_hold_atr_threshold", 1.0),
-        "use_trend_filter": backtest_config.get("use_trend_filter", False),
-        "adx_threshold": backtest_config.get("adx_threshold", 25),
+        "use_trend_filter": backtest_config.get("use_trend_filter", True),
+        "adx_strong": backtest_config.get("adx_strong", 30),
+        "adx_weak": backtest_config.get("adx_weak", 20),
+        "trend_buffer": backtest_config.get("trend_buffer", 0.015),
+        "tp1_multiplier": backtest_config.get("tp1_multiplier", 1.0),
+        "tp2_multiplier": backtest_config.get("tp2_multiplier", 1.5),
+        "tp3_multiplier": backtest_config.get("tp3_multiplier", 2.0),
+        "tp1_ratio": backtest_config.get("tp1_ratio", 0.50),
+        "tp2_ratio": backtest_config.get("tp2_ratio", 0.30),
+        "tp3_ratio": backtest_config.get("tp3_ratio", 0.20),
+        "vol_tp_scale": backtest_config.get("vol_tp_scale", True),
     }
 
     strategy_config = {

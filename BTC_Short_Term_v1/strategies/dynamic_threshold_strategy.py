@@ -11,6 +11,7 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         *,
         signal=None,
         atr_series=None,
+        atr_mean_series=None,
         ma_series=None,
         ma_fast_series=None,
         adx_series=None,
@@ -20,8 +21,8 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         exit_short_percentile=0.80,
         rolling_window=720,
         position_ratio=0.30,
-        pos_side="long",
-        max_hold_bars=8,
+        pos_side="both",
+        max_hold_bars=12,
         atr_stop_multiplier=2.0,
         risk_reward_ratio=2.0,
         partial_tp_ratio=0.50,
@@ -29,12 +30,22 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         cooldown_bars=2,
         smart_hold_extension=True,
         smart_hold_atr_threshold=1.0,
-        use_trend_filter=False,
-        adx_threshold=25,
+        use_trend_filter=True,
+        adx_strong=30,
+        adx_weak=20,
+        trend_buffer=0.015,
+        tp1_multiplier=1.0,
+        tp2_multiplier=1.5,
+        tp3_multiplier=2.0,
+        tp1_ratio=0.50,
+        tp2_ratio=0.30,
+        tp3_ratio=0.20,
+        vol_tp_scale=True,
         **kwargs,
     ):
         self._raw_signal = signal
         self._atr_series = atr_series
+        self._atr_mean_series = atr_mean_series
         self._ma_series = ma_series
         self._ma_fast_series = ma_fast_series
         self._adx_series = adx_series
@@ -54,7 +65,16 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         self.smart_hold_ext = smart_hold_extension
         self.smart_hold_atr_thresh = smart_hold_atr_threshold
         self.use_trend_filter = use_trend_filter
-        self.adx_threshold = adx_threshold
+        self.adx_strong = adx_strong
+        self.adx_weak = adx_weak
+        self.trend_buffer = trend_buffer
+        self.tp1_mult = tp1_multiplier
+        self.tp2_mult = tp2_multiplier
+        self.tp3_mult = tp3_multiplier
+        self.tp1_ratio = tp1_ratio
+        self.tp2_ratio = tp2_ratio
+        self.tp3_ratio = tp3_ratio
+        self.vol_tp_scale = vol_tp_scale
 
         super().__init__(signal=signal, **kwargs)
 
@@ -69,15 +89,21 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         self._lowest_price = None
         self._trailing_stop = None
         self._stop_loss = None
-        self._take_profit = None
-        self._partial_tp_hit = False
+        self._tp1 = None
+        self._tp2 = None
+        self._tp3 = None
+        self._tp1_hit = False
+        self._tp2_hit = False
         self._cooldown = 0
         self._trade_count = 0
+        self._trend_hold_bars = 0
 
         self._trade_log = []
         self._filtered_long_count = 0
         self._filtered_short_count = 0
         self._filtered_adx_count = 0
+        self._trend_filter_exits = 0
+        self._trend_filter_protected = 0
 
     def _calculate_dynamic_thresholds(self):
         sig_df = self._raw_signal
@@ -140,6 +166,9 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
     def _get_atr(self, current_time):
         return self._lookup_series(self._atr_series, current_time)
 
+    def _get_atr_mean(self, current_time):
+        return self._lookup_series(self._atr_mean_series, current_time)
+
     def _get_ma(self, current_time):
         return self._lookup_series(self._ma_series, current_time)
 
@@ -167,6 +196,118 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             return (current_price - self._entry_price) > self.smart_hold_atr_thresh * atr_value
         else:
             return (self._entry_price - current_price) > self.smart_hold_atr_thresh * atr_value
+
+    def _calc_tp_levels(self, current_price, atr_value, direction):
+        if atr_value is None or atr_value <= 0:
+            return None, None, None
+
+        atr_mean = self._last_atr_mean
+        scale = 1.0
+        if self.vol_tp_scale and atr_mean is not None and atr_mean > 0:
+            vol_ratio = atr_value / atr_mean
+            if vol_ratio > 1.5:
+                scale = 0.8
+            elif vol_ratio < 0.7:
+                scale = 1.2
+
+        if direction == "long":
+            tp1 = current_price + self.tp1_mult * scale * atr_value
+            tp2 = current_price + self.tp2_mult * scale * atr_value
+            tp3 = current_price + self.tp3_mult * scale * atr_value
+        else:
+            tp1 = current_price - self.tp1_mult * scale * atr_value
+            tp2 = current_price - self.tp2_mult * scale * atr_value
+            tp3 = current_price - self.tp3_mult * scale * atr_value
+
+        return tp1, tp2, tp3
+
+    def _check_trend_filter_entry(self, direction, current_price, ma_slow, adx_value, atr_value):
+        if not self.use_trend_filter or ma_slow is None:
+            return True
+
+        if direction == "long":
+            if adx_value is not None and adx_value > self.adx_strong:
+                return current_price > ma_slow
+            elif adx_value is not None and adx_value >= self.adx_weak:
+                return current_price > ma_slow * (1 - self.trend_buffer)
+            else:
+                if atr_value is not None:
+                    atr_mean = self._last_atr_mean
+                    if atr_mean is not None and atr_mean > 0:
+                        return atr_value < atr_mean * 0.8
+                return False
+        elif direction == "short":
+            if adx_value is not None and adx_value > self.adx_strong:
+                return current_price < ma_slow
+            elif adx_value is not None and adx_value >= self.adx_weak:
+                return current_price < ma_slow * (1 + self.trend_buffer)
+            else:
+                return False
+
+        return True
+
+    def _check_trend_filter_exit(self, current_price, ma_slow, adx_value, atr_value):
+        if not self.use_trend_filter or ma_slow is None:
+            return False, "none"
+
+        if self._direction == "long":
+            if adx_value is not None and adx_value > self.adx_strong:
+                if current_price < ma_slow:
+                    return True, "Trend_Filter_Exit"
+            elif adx_value is not None and adx_value >= self.adx_weak:
+                if current_price < ma_slow * (1 - self.trend_buffer):
+                    return True, "Trend_Filter_Exit"
+            else:
+                pass
+
+        elif self._direction == "short":
+            if adx_value is not None and adx_value > self.adx_strong:
+                if current_price > ma_slow:
+                    return True, "Trend_Filter_Exit"
+            elif adx_value is not None and adx_value >= self.adx_weak:
+                if current_price > ma_slow * (1 + self.trend_buffer):
+                    return True, "Trend_Filter_Exit"
+
+        return False, "none"
+
+    def _apply_trend_exit_protection(self, current_price, current_amount, trade_start_time, trade_end_time):
+        if self._entry_price is None:
+            return None
+
+        pnl_pct = 0
+        if self._direction == "long":
+            pnl_pct = (current_price - self._entry_price) / self._entry_price
+        else:
+            pnl_pct = (self._entry_price - current_price) / self._entry_price
+
+        if pnl_pct > 0.005:
+            self._stop_loss = self._entry_price
+            if self._direction == "long":
+                self._trailing_stop = max(self._trailing_stop or 0, self._entry_price)
+            else:
+                self._trailing_stop = min(self._trailing_stop or float("inf"), self._entry_price)
+            self._trend_hold_bars = 2
+            self._trend_filter_protected += 1
+            return None
+
+        elif pnl_pct > 0:
+            partial_amount = abs(current_amount) * 0.5
+            if partial_amount > 1e-8:
+                direction = OrderDir.SELL if self._direction == "long" else OrderDir.BUY
+                order = Order(
+                    stock_id="BTCUSDT",
+                    amount=partial_amount,
+                    direction=direction,
+                    start_time=trade_start_time,
+                    end_time=trade_end_time,
+                )
+                self._trend_hold_bars = 2
+                return order
+            return None
+
+        else:
+            self._trend_filter_exits += 1
+            return "full_exit"
 
     def _record_exit(self, exit_time, exit_price, exit_reason, current_amount):
         if self._entry_price is None or self._entry_time is None:
@@ -205,8 +346,12 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         self._lowest_price = None
         self._trailing_stop = None
         self._stop_loss = None
-        self._take_profit = None
-        self._partial_tp_hit = False
+        self._tp1 = None
+        self._tp2 = None
+        self._tp3 = None
+        self._tp1_hit = False
+        self._tp2_hit = False
+        self._trend_hold_bars = 0
         self._cooldown = self.cooldown_bars
 
     def get_trade_log(self):
@@ -217,6 +362,8 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
             "filtered_long": self._filtered_long_count,
             "filtered_short": self._filtered_short_count,
             "filtered_adx": self._filtered_adx_count,
+            "trend_filter_exits": self._trend_filter_exits,
+            "trend_filter_protected": self._trend_filter_protected,
         }
 
     def generate_trade_decision(self, execute_result=None):
@@ -252,15 +399,11 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         exit_short_th = self._get_threshold(self.exit_short_thresh, current_time)
 
         atr_value = self._get_atr(current_time)
+        atr_mean = self._get_atr_mean(current_time)
+        self._last_atr_mean = atr_mean
         ma_slow = self._get_ma(current_time)
         ma_fast = self._get_ma_fast(current_time)
         adx_value = self._get_adx(current_time)
-
-        above_ma_slow = (ma_slow is not None and current_price > ma_slow)
-        below_ma_slow = (ma_slow is not None and current_price < ma_slow)
-        below_ma_fast = (ma_fast is not None and current_price < ma_fast)
-        above_ma_fast = (ma_fast is not None and current_price > ma_fast)
-        low_adx = (adx_value is not None and adx_value < self.adx_threshold)
 
         cash = self.trade_position.get_cash()
         current_amount = self.trade_position.get_stock_amount(current_stock)
@@ -281,8 +424,9 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                 self._lowest_price = current_price
                 self._trailing_stop = None
                 self._stop_loss = None
-                self._take_profit = None
-                self._partial_tp_hit = False
+                self._tp1, self._tp2, self._tp3 = self._calc_tp_levels(current_price, atr_value, "long")
+                self._tp1_hit = False
+                self._tp2_hit = False
         else:
             if self._state != "short":
                 self._state = "short"
@@ -294,8 +438,9 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                 self._lowest_price = current_price
                 self._trailing_stop = None
                 self._stop_loss = None
-                self._take_profit = None
-                self._partial_tp_hit = False
+                self._tp1, self._tp2, self._tp3 = self._calc_tp_levels(current_price, atr_value, "short")
+                self._tp1_hit = False
+                self._tp2_hit = False
 
         order_list = []
 
@@ -318,30 +463,25 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         if self._cooldown > 0:
             self._cooldown -= 1
 
+        if self._trend_hold_bars > 0:
+            self._trend_hold_bars -= 1
+
         if self._state == "flat":
             if self._cooldown > 0:
                 return TradeDecisionWO([], self)
 
             want_long = (current_pred is not None and entry_long_th is not None and current_pred > entry_long_th)
-            want_short = (self.pos_side == "both"
+            want_short = (self.pos_side in ("both", "short")
                           and current_pred is not None and entry_short_th is not None
                           and current_pred < entry_short_th)
 
-            if self.use_trend_filter and ma_slow is not None:
-                if want_long and below_ma_slow:
+            if self.use_trend_filter:
+                if want_long and not self._check_trend_filter_entry("long", current_price, ma_slow, adx_value, atr_value):
                     want_long = False
                     self._filtered_long_count += 1
-                if want_short and above_ma_slow:
+                if want_short and not self._check_trend_filter_entry("short", current_price, ma_slow, adx_value, atr_value):
                     want_short = False
                     self._filtered_short_count += 1
-
-            if low_adx:
-                if want_long:
-                    want_long = False
-                    self._filtered_adx_count += 1
-                if want_short:
-                    want_short = False
-                    self._filtered_adx_count += 1
 
             if want_long:
                 pos_btc = self._calc_position_size(portfolio_value, current_price, atr_value)
@@ -360,14 +500,17 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                     self._bars_held = 0
                     self._highest_price = current_price
                     self._lowest_price = current_price
-                    self._partial_tp_hit = False
+                    self._tp1_hit = False
+                    self._tp2_hit = False
+                    self._trend_hold_bars = 0
                     if atr_value is not None and atr_value > 0:
                         self._stop_loss = current_price - self.atr_stop_mult * atr_value
-                        risk_per_btc = current_price - self._stop_loss
-                        self._take_profit = current_price + risk_per_btc * self.risk_reward
+                        self._tp1, self._tp2, self._tp3 = self._calc_tp_levels(current_price, atr_value, "long")
                     else:
                         self._stop_loss = current_price * 0.97
-                        self._take_profit = current_price * 1.06
+                        self._tp1 = current_price * 1.01
+                        self._tp2 = current_price * 1.015
+                        self._tp3 = current_price * 1.02
                     self._trailing_stop = self._stop_loss
 
             elif want_short:
@@ -387,14 +530,17 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                     self._bars_held = 0
                     self._highest_price = current_price
                     self._lowest_price = current_price
-                    self._partial_tp_hit = False
+                    self._tp1_hit = False
+                    self._tp2_hit = False
+                    self._trend_hold_bars = 0
                     if atr_value is not None and atr_value > 0:
                         self._stop_loss = current_price + self.atr_stop_mult * atr_value
-                        risk_per_btc = self._stop_loss - current_price
-                        self._take_profit = current_price - risk_per_btc * self.risk_reward
+                        self._tp1, self._tp2, self._tp3 = self._calc_tp_levels(current_price, atr_value, "short")
                     else:
                         self._stop_loss = current_price * 1.03
-                        self._take_profit = current_price * 0.94
+                        self._tp1 = current_price * 0.99
+                        self._tp2 = current_price * 0.985
+                        self._tp3 = current_price * 0.98
                     self._trailing_stop = self._stop_loss
 
         elif self._state == "long":
@@ -409,9 +555,19 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                 should_exit = True
                 exit_reason = "Trailing_Stop"
 
-            if not should_exit and below_ma_fast:
-                should_exit = True
-                exit_reason = "Fast_MA_Exit"
+            if not should_exit and self._trend_hold_bars <= 0:
+                trend_exit, trend_reason = self._check_trend_filter_exit(current_price, ma_slow, adx_value, atr_value)
+                if trend_exit:
+                    protection_result = self._apply_trend_exit_protection(
+                        current_price, current_amount, trade_start_time, trade_end_time
+                    )
+                    if protection_result is None:
+                        pass
+                    elif protection_result == "full_exit":
+                        should_exit = True
+                        exit_reason = trend_reason
+                    else:
+                        order_list.append(protection_result)
 
             if not should_exit and self._bars_held >= self.max_hold_bars:
                 if self._has_significant_profit(current_price, atr_value):
@@ -428,24 +584,41 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                         should_exit = True
                         exit_reason = "Signal_Exit"
 
-            if not should_exit and not self._partial_tp_hit and self._take_profit is not None:
-                if current_price >= self._take_profit:
-                    partial_amount = abs(current_amount) * self.partial_tp_ratio
-                    if partial_amount > 1e-8:
+            if not should_exit and not self._tp1_hit and self._tp1 is not None:
+                if current_price >= self._tp1:
+                    tp1_amount = abs(current_amount) * self.tp1_ratio
+                    if tp1_amount > 1e-8:
                         order_list.append(Order(
                             stock_id=current_stock,
-                            amount=partial_amount,
+                            amount=tp1_amount,
                             direction=OrderDir.SELL,
                             start_time=trade_start_time,
                             end_time=trade_end_time,
                         ))
-                    self._partial_tp_hit = True
+                    self._tp1_hit = True
                     self._stop_loss = self._entry_price
-                    self._trailing_stop = max(
-                        self._trailing_stop or 0, self._entry_price
-                    )
-                    self._take_profit = None
-                    self._record_exit(current_time, current_price, "TP_Hit", current_amount)
+                    self._trailing_stop = max(self._trailing_stop or 0, self._entry_price)
+                    self._record_exit(current_time, current_price, "TP1_Hit", current_amount)
+
+            if not should_exit and self._tp1_hit and not self._tp2_hit and self._tp2 is not None:
+                if current_price >= self._tp2:
+                    remaining = abs(current_amount) * self.tp2_ratio
+                    if remaining > 1e-8:
+                        order_list.append(Order(
+                            stock_id=current_stock,
+                            amount=remaining,
+                            direction=OrderDir.SELL,
+                            start_time=trade_start_time,
+                            end_time=trade_end_time,
+                        ))
+                    self._tp2_hit = True
+                    self._trailing_stop = max(self._trailing_stop or 0, self._tp1 or self._entry_price)
+                    self._record_exit(current_time, current_price, "TP2_Hit", current_amount)
+
+            if not should_exit and self._tp2_hit and self._tp3 is not None:
+                if current_price >= self._tp3:
+                    should_exit = True
+                    exit_reason = "TP3_Hit"
 
             if should_exit:
                 if abs(current_amount) > 1e-8:
@@ -470,9 +643,19 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                 should_exit = True
                 exit_reason = "Trailing_Stop"
 
-            if not should_exit and above_ma_fast:
-                should_exit = True
-                exit_reason = "Fast_MA_Exit"
+            if not should_exit and self._trend_hold_bars <= 0:
+                trend_exit, trend_reason = self._check_trend_filter_exit(current_price, ma_slow, adx_value, atr_value)
+                if trend_exit:
+                    protection_result = self._apply_trend_exit_protection(
+                        current_price, current_amount, trade_start_time, trade_end_time
+                    )
+                    if protection_result is None:
+                        pass
+                    elif protection_result == "full_exit":
+                        should_exit = True
+                        exit_reason = trend_reason
+                    else:
+                        order_list.append(protection_result)
 
             if not should_exit and self._bars_held >= self.max_hold_bars:
                 if self._has_significant_profit(current_price, atr_value):
@@ -489,24 +672,41 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
                         should_exit = True
                         exit_reason = "Signal_Exit"
 
-            if not should_exit and not self._partial_tp_hit and self._take_profit is not None:
-                if current_price <= self._take_profit:
-                    partial_amount = abs(current_amount) * self.partial_tp_ratio
-                    if partial_amount > 1e-8:
+            if not should_exit and not self._tp1_hit and self._tp1 is not None:
+                if current_price <= self._tp1:
+                    tp1_amount = abs(current_amount) * self.tp1_ratio
+                    if tp1_amount > 1e-8:
                         order_list.append(Order(
                             stock_id=current_stock,
-                            amount=partial_amount,
+                            amount=tp1_amount,
                             direction=OrderDir.BUY,
                             start_time=trade_start_time,
                             end_time=trade_end_time,
                         ))
-                    self._partial_tp_hit = True
+                    self._tp1_hit = True
                     self._stop_loss = self._entry_price
-                    self._trailing_stop = min(
-                        self._trailing_stop or float("inf"), self._entry_price
-                    )
-                    self._take_profit = None
-                    self._record_exit(current_time, current_price, "TP_Hit", current_amount)
+                    self._trailing_stop = min(self._trailing_stop or float("inf"), self._entry_price)
+                    self._record_exit(current_time, current_price, "TP1_Hit", current_amount)
+
+            if not should_exit and self._tp1_hit and not self._tp2_hit and self._tp2 is not None:
+                if current_price <= self._tp2:
+                    remaining = abs(current_amount) * self.tp2_ratio
+                    if remaining > 1e-8:
+                        order_list.append(Order(
+                            stock_id=current_stock,
+                            amount=remaining,
+                            direction=OrderDir.BUY,
+                            start_time=trade_start_time,
+                            end_time=trade_end_time,
+                        ))
+                    self._tp2_hit = True
+                    self._trailing_stop = min(self._trailing_stop or float("inf"), self._tp1 or self._entry_price)
+                    self._record_exit(current_time, current_price, "TP2_Hit", current_amount)
+
+            if not should_exit and self._tp2_hit and self._tp3 is not None:
+                if current_price <= self._tp3:
+                    should_exit = True
+                    exit_reason = "TP3_Hit"
 
             if should_exit:
                 if abs(current_amount) > 1e-8:

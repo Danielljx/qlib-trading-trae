@@ -4,7 +4,7 @@ TRAINING_CONFIG = {
     "test_end": "2026-05-23",
     "rolling_step_months": 1,
     "rolling_type": "sliding",
-    "train_window_months": 24,
-    "valid_window_months": 3,
+    "train_window_months": 18,
+    "valid_window_months": 1,
     "freq": "60min",
 }

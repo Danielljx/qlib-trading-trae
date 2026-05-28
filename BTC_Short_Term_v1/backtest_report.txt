@@ -18,10 +18,10 @@ Schmitt Trigger (Hysteresis)
   Entry Short:    10% percentile
   Exit Short:     80% percentile
   Rolling Window: 720h
-  Pos Side:       long
+  Pos Side:       both
 
 CTA Exit Mechanism
-  Max Hold Bars:  8 (4h label alignment)
+  Max Hold Bars:  12 (4h label alignment)
   ATR Stop Mult:  2.0x
   Risk-Reward:    1:2.0
   Partial TP:     50% at TP1
@@ -35,23 +35,23 @@ Training Configuration
   Method:     Expanding Window Rolling
   Initial:    2017-01-01 ~ N/A
   Rolling:    Quarterly (3-month step)
-  Valid:      3 months before test
+  Valid:      1 months before test
 
 Backtest Performance
   Period:           2023-01-01 ~ 2026-05-23
 
   Initial Capital:        100,000.00 USDT
-  Final Value:             98,265.08 USDT
-  Total Return:               -1.73%
-  Annual Return:              -0.51%
-  Annual Volatility:           4.58%
-  Sharpe Ratio:             -0.0889
-  Max Drawdown:              -15.45%
-  Calmar Ratio:             -0.0333
-  Win Rate:                    2.36%
-  Profit/Loss Ratio:         1.0810
-  Total Trades:                 634
-  Avg Turnover:                0.83%
+  Final Value:             96,046.29 USDT
+  Total Return:               -3.95%
+  Annual Return:              -1.18%
+  Annual Volatility:           7.76%
+  Sharpe Ratio:             -0.1146
+  Max Drawdown:              -15.55%
+  Calmar Ratio:             -0.0760
+  Win Rate:                   11.12%
+  Profit/Loss Ratio:         1.0295
+  Total Trades:                2554
+  Avg Turnover:                2.91%
 
 Trading Costs (Binance USDT Perpetual)
   Open Fee:       0.04% (Taker)
