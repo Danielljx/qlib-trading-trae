@@ -26,14 +26,15 @@ class RollingTrainer:
                 test_end,
             )
 
-            valid_start = current_test_start - pd.DateOffset(months=valid_months)
-            valid_end = current_test_start - pd.Timedelta(days=1)
+            expanding_train_end = current_test_start - pd.Timedelta(days=1)
+            valid_start = expanding_train_end - pd.DateOffset(months=valid_months) + pd.Timedelta(days=1)
+            valid_end = expanding_train_end
 
             if valid_start < train_start:
-                valid_start = current_test_start - pd.Timedelta(days=60)
+                valid_start = train_start
 
             segments.append({
-                "train": (train_start.strftime("%Y-%m-%d"), current_test_start.strftime("%Y-%m-%d")),
+                "train": (train_start.strftime("%Y-%m-%d"), expanding_train_end.strftime("%Y-%m-%d")),
                 "valid": (valid_start.strftime("%Y-%m-%d"), valid_end.strftime("%Y-%m-%d")),
                 "test": (current_test_start.strftime("%Y-%m-%d"), current_test_end.strftime("%Y-%m-%d")),
             })
@@ -49,7 +50,7 @@ class RollingTrainer:
         all_pred = []
 
         for i, seg in enumerate(segments):
-            print(f"Segment {i+1}/{len(segments)}: train={seg['train']}, test={seg['test']}")
+            print(f"Segment {i+1}/{len(segments)}: train={seg['train']}, valid={seg['valid']}, test={seg['test']}")
 
             dataset = DatasetH(
                 handler=self.handler,

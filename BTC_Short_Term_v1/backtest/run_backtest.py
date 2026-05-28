@@ -56,20 +56,20 @@ def _patched_sell_stock(self, stock_id, trade_val, cost, trade_price):
         self.position["cash"] += new_cash
 
 
-def run_backtest(predictions, backtest_config, start_time, end_time, atr_series=None):
+def run_backtest(predictions, backtest_config, start_time, end_time):
     BaseTradeDecision.__init__ = _patched_init
     TradeCalendarManager.get_step_time = _patched_get_step_time
     Position._sell_stock = _patched_sell_stock
 
     try:
-        return _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_series)
+        return _run_backtest_impl(predictions, backtest_config, start_time, end_time)
     finally:
         BaseTradeDecision.__init__ = _orig_init
         TradeCalendarManager.get_step_time = _orig_get_step_time
         Position._sell_stock = _orig_sell_stock
 
 
-def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_series):
+def _run_backtest_impl(predictions, backtest_config, start_time, end_time):
     predictions = predictions.sort_index()
     signal_df = predictions.to_frame(name="score")
 
@@ -104,28 +104,16 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time, atr_s
         trade_exchange=trade_exchange,
     )
 
-    strategy_kwargs = {
-        "signal": signal_df,
-        "atr_series": atr_series,
-        "long_percentile": backtest_config["long_percentile"],
-        "short_percentile": backtest_config["short_percentile"],
-        "exit_long_percentile": backtest_config.get("exit_long_percentile", 0.50),
-        "exit_short_percentile": backtest_config.get("exit_short_percentile", 0.50),
-        "rolling_window": backtest_config["rolling_window"],
-        "position_ratio": backtest_config["position_ratio"],
-        "pos_side": backtest_config.get("pos_side", "long"),
-        "max_hold_bars": backtest_config.get("max_hold_bars", 4),
-        "atr_stop_multiplier": backtest_config.get("atr_stop_multiplier", 2.0),
-        "risk_reward_ratio": backtest_config.get("risk_reward_ratio", 2.0),
-        "partial_tp_ratio": backtest_config.get("partial_tp_ratio", 0.50),
-        "risk_per_trade": backtest_config.get("risk_per_trade", 0.02),
-        "cooldown_bars": backtest_config.get("cooldown_bars", 2),
-    }
-
     strategy_config = {
         "class": "DynamicThresholdStrategy",
         "module_path": "BTC_Short_Term_v1.strategies.dynamic_threshold_strategy",
-        "kwargs": strategy_kwargs,
+        "kwargs": {
+            "signal": signal_df,
+            "long_percentile": backtest_config["long_percentile"],
+            "short_percentile": backtest_config["short_percentile"],
+            "rolling_window": backtest_config["rolling_window"],
+            "position_ratio": backtest_config["position_ratio"],
+        },
     }
 
     trade_strategy = init_instance_by_config(strategy_config, accept_types=BaseStrategy)

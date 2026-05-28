@@ -12,8 +12,7 @@ BACKTEST_CONFIG: dict = {
     "exit_long_percentile": 0.50,
     "exit_short_percentile": 0.50,
     "rolling_window": 720,
-    "position_ratio": 0.30,
-    "pos_side": "long",
+    "position_ratio": 0.40,
 
     "max_hold_bars": 4,
     "atr_stop_multiplier": 2.0,
