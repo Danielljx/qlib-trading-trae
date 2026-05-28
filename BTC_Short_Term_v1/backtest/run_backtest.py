@@ -113,7 +113,6 @@ def _run_backtest_impl(predictions, backtest_config, start_time, end_time):
             "short_percentile": backtest_config["short_percentile"],
             "rolling_window": backtest_config["rolling_window"],
             "position_ratio": backtest_config["position_ratio"],
-            "pos_side": backtest_config.get("pos_side", "both"),
         },
     }
 

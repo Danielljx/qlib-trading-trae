@@ -37,7 +37,7 @@ def _get_config():
         ("OPEN_0", "$open / $close - 1"),
         ("HIGH_0", "$high / $close - 1"),
         ("LOW_0", "$low / $close - 1"),
-        ("VWAP_0", "$close / $close - 1"),
+        ("VWAP_0", "($close * $volume) / ($volume + 1e-12) - 1"),
     ]
 
     MICRO_4 = [

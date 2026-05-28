@@ -14,7 +14,6 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         short_percentile=0.15,
         rolling_window=720,
         position_ratio=0.95,
-        pos_side="both",
         **kwargs,
     ):
         self._raw_signal = signal
@@ -22,7 +21,6 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         self.short_pct = short_percentile
         self.window = rolling_window
         self.position_ratio = position_ratio
-        self.pos_side = pos_side
 
         super().__init__(signal=signal, **kwargs)
 
@@ -112,48 +110,79 @@ class DynamicThresholdStrategy(BaseSignalStrategy):
         if pd.isna(curr_long_th) or pd.isna(curr_short_th):
             return TradeDecisionWO([], self)
 
-        target_weight = 0.0
+        signal_dir = 0
         if current_pred > curr_long_th:
-            target_weight = self.position_ratio
-        elif self.pos_side == "both" and current_pred < curr_short_th:
-            target_weight = -self.position_ratio
+            signal_dir = 1
+        elif current_pred < curr_short_th:
+            signal_dir = -1
 
         cash = self.trade_position.get_cash()
         current_amount = self.trade_position.get_stock_amount(current_stock)
 
         order_list = []
 
-        if abs(target_weight) > 0.01:
-            direction = OrderDir.BUY if target_weight > 0 else OrderDir.SELL
-            rate = self.trade_exchange.get_deal_price(
-                stock_id=current_stock,
-                start_time=trade_start_time,
-                end_time=trade_end_time,
-                direction=direction,
-            )
-            if rate is None or rate <= 0:
-                return TradeDecisionWO([], self)
-
-            target_amount = abs(target_weight * cash) / rate
-
-            if abs(current_amount) > 1e-8:
-                close_dir = OrderDir.SELL if current_amount > 0 else OrderDir.BUY
+        if signal_dir == 1:
+            if current_amount < -1e-8:
                 order_list.append(Order(
                     stock_id=current_stock,
                     amount=abs(current_amount),
-                    direction=close_dir,
+                    direction=OrderDir.BUY,
+                    start_time=trade_start_time,
+                    end_time=trade_end_time,
+                ))
+                cash += abs(current_amount) * self.trade_exchange.get_deal_price(
+                    stock_id=current_stock,
+                    start_time=trade_start_time,
+                    end_time=trade_end_time,
+                    direction=OrderDir.BUY,
+                )
+
+            if current_amount < 1e-8:
+                rate = self.trade_exchange.get_deal_price(
+                    stock_id=current_stock,
+                    start_time=trade_start_time,
+                    end_time=trade_end_time,
+                    direction=OrderDir.BUY,
+                )
+                if rate is not None and rate > 0:
+                    buy_amount = self.position_ratio * cash / rate
+                    if buy_amount > 0:
+                        order_list.append(Order(
+                            stock_id=current_stock,
+                            amount=buy_amount,
+                            direction=OrderDir.BUY,
+                            start_time=trade_start_time,
+                            end_time=trade_end_time,
+                        ))
+
+        elif signal_dir == -1:
+            if current_amount > 1e-8:
+                order_list.append(Order(
+                    stock_id=current_stock,
+                    amount=abs(current_amount),
+                    direction=OrderDir.SELL,
                     start_time=trade_start_time,
                     end_time=trade_end_time,
                 ))
 
-            if target_amount > 0:
-                order_list.append(Order(
+            if current_amount > -1e-8:
+                rate = self.trade_exchange.get_deal_price(
                     stock_id=current_stock,
-                    amount=target_amount,
-                    direction=direction,
                     start_time=trade_start_time,
                     end_time=trade_end_time,
-                ))
+                    direction=OrderDir.SELL,
+                )
+                if rate is not None and rate > 0:
+                    sell_amount = self.position_ratio * cash / rate
+                    if sell_amount > 0:
+                        order_list.append(Order(
+                            stock_id=current_stock,
+                            amount=sell_amount,
+                            direction=OrderDir.SELL,
+                            start_time=trade_start_time,
+                            end_time=trade_end_time,
+                        ))
+
         else:
             if abs(current_amount) > 1e-8:
                 close_dir = OrderDir.SELL if current_amount > 0 else OrderDir.BUY

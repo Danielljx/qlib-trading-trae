@@ -13,7 +13,7 @@ Strategy Overview
   Strategy:       DynamicThresholdStrategy
   Long Percentile:  0.95 (top 15%)
   Short Percentile: 0.05 (bottom 15%)
-  Rolling Window:   1440h (30 days)
+  Rolling Window:   720h (30 days)
 
 Training Configuration
   Method:     Expanding Window Rolling
@@ -25,18 +25,18 @@ Backtest Performance
   Period:           2021-01-01 ~ 2026-05-23
 
   Initial Capital:        100,000.00 USDT
-  Final Value:             95,045.38 USDT
-  Total Return:               -4.95%
+  Final Value:            107,936.21 USDT
+  Total Return:                7.94%
   Benchmark (B&H):              N/A
-  Annual Return:              -0.94%
-  Annual Volatility:           5.06%
-  Sharpe Ratio:             -0.1615
-  Max Drawdown:              -19.21%
-  Calmar Ratio:             -0.0489
-  Win Rate:                    2.52%
-  Profit/Loss Ratio:         1.1096
-  Total Trades:                3763
-  Avg Turnover:                2.66%
+  Annual Return:               1.43%
+  Annual Volatility:           9.94%
+  Sharpe Ratio:              0.1922
+  Max Drawdown:              -31.57%
+  Calmar Ratio:              0.0452
+  Win Rate:                    5.34%
+  Profit/Loss Ratio:         1.0723
+  Total Trades:                5566
+  Avg Turnover:                4.77%
 
 Trading Costs (Binance USDT Perpetual)
   Open Fee:       0.04% (Taker)
